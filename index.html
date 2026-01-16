@@ -12,14 +12,18 @@
           extend: {
             colors: {
               gulf: {
-                orange: '#F58025',
-                blue: '#002664',
-                lightblue: '#00A3E0',
+                orange: '#F37121',
+                blue: '#003594',
+                sky: '#B9D9EB',
+                white: '#FFFFFF',
               }
             },
             fontFamily: {
               sports: ['Teko', 'sans-serif'],
               body: ['Roboto', 'sans-serif'],
+            },
+            backgroundImage: {
+              'stadium-pattern': "url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAAIklEQVQIW2NkQAKrVq36zwjjgzjwqFChAoMBJAoSIwIKCgQA8g8X66D6W84AAAAASUVORK5CYII=')",
             }
           }
         }
@@ -32,6 +36,20 @@
       h1, h2, h3, .brand-font {
         font-family: 'Teko', sans-serif;
       }
+      /* Custom Scrollbar for a cleaner look */
+      ::-webkit-scrollbar {
+        width: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #f1f1f1; 
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #B9D9EB; 
+        border-radius: 4px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #003594; 
+      }
     </style>
   <script type="importmap">
 {
@@ -39,7 +57,9 @@
     "lucide-react": "https://esm.sh/lucide-react@^0.562.0",
     "react/": "https://esm.sh/react@^19.2.3/",
     "react": "https://esm.sh/react@^19.2.3",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/"
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "html2canvas": "https://esm.sh/html2canvas@1.4.1",
+    "@emailjs/browser": "https://esm.sh/@emailjs/browser@3.11.0"
   }
 }
 </script>

@@ -1,120 +1,648 @@
-import React, { useState, useEffect } from 'react';
-import { ShoppingCart, User, LogOut, CheckCircle, Trophy, Flag, MapPin, Truck, Phone, Package, Menu, X, Settings, Hash } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { ShoppingCart, User, LogOut, CheckCircle, Trophy, Flag, MapPin, Truck, Phone, Package, Menu, X, Settings, Hash, CircleDot, ClipboardList, Building2, Shirt, Medal, Sparkles, Gauge, Calendar, Activity, ChevronRight, Speaker, Users, Download, Share2 } from 'lucide-react';
 import { Client, Reward, OrderDetails, CartItem } from './types';
 import { getDatabase, getPoints, deductPoints } from './services/db';
 import { AdminPanel } from './components/AdminPanel';
+import html2canvas from 'html2canvas';
+import emailjs from '@emailjs/browser';
 
-type ViewState = 'login' | 'store' | 'checkout' | 'success' | 'admin';
+type ViewState = 'login' | 'store' | 'checkout' | 'success' | 'admin' | 'profile';
 
-// Extracted Component to avoid "useState inside loop" error
-const RewardCard = ({ 
-  reward, 
-  currentUser, 
-  currentPoints, 
-  onAddToCart 
-}: { 
-  reward: Reward; 
-  currentUser: Client; 
-  currentPoints: number; 
+interface RewardCardProps {
+  reward: Reward;
+  currentUser: Client;
+  currentPoints: number;
   onAddToCart: (reward: Reward, qty: number) => void;
-}) => {
-  const [qty, setQty] = useState(1);
-  const price = currentUser.type === 'Pareto' ? reward.pointsPareto : reward.pointsNormal;
-  const canAfford = currentPoints >= price;
+}
+
+// --- Visual Components ---
+
+const StadiumAtmosphere = () => (
+  <div className="absolute inset-0 pointer-events-none overflow-hidden z-0">
+    {/* Crowd Silhouette (CSS Gradient) */}
+    <div className="absolute bottom-0 left-0 right-0 h-48 bg-gradient-to-t from-[#001030] to-transparent opacity-80 z-10"></div>
+    
+    {/* Pitch Perspective Lines */}
+    <div className="absolute bottom-[-50%] left-[-50%] right-[-50%] h-[100%] z-0 opacity-10"
+         style={{
+           backgroundImage: `
+             linear-gradient(0deg, transparent 24%, rgba(255,255,255,0.3) 25%, rgba(255,255,255,0.3) 26%, transparent 27%, transparent 74%, rgba(255,255,255,0.3) 75%, rgba(255,255,255,0.3) 76%, transparent 77%),
+             linear-gradient(90deg, transparent 24%, rgba(255,255,255,0.3) 25%, rgba(255,255,255,0.3) 26%, transparent 27%, transparent 74%, rgba(255,255,255,0.3) 75%, rgba(255,255,255,0.3) 76%, transparent 77%)
+           `,
+           backgroundSize: '100px 100px',
+           transform: 'perspective(1000px) rotateX(60deg)',
+         }}>
+    </div>
+
+    {/* Stadium Lights */}
+    <div className="absolute top-0 left-1/4 w-32 h-32 bg-white blur-[100px] opacity-40 rounded-full"></div>
+    <div className="absolute top-0 right-1/4 w-32 h-32 bg-white blur-[100px] opacity-40 rounded-full"></div>
+  </div>
+);
+
+const BuntingFlags = () => (
+  <div className="absolute top-full left-0 w-full h-4 flex overflow-hidden z-20 pointer-events-none">
+     {Array.from({ length: 40 }).map((_, i) => {
+        const colors = ['#003594', '#F37121', '#B9D9EB', '#FFFFFF'];
+        return (
+          <div key={i} className="flex-1 h-full" style={{
+             backgroundColor: colors[i % colors.length],
+             clipPath: 'polygon(0 0, 100% 0, 50% 100%)',
+             margin: '0 2px'
+          }}></div>
+        );
+     })}
+  </div>
+);
+
+const SoccerBallPattern = ({ className }: { className?: string }) => (
+    <svg className={className} width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+            <pattern id="soccer-ball" x="0" y="0" width="40" height="40" patternUnits="userSpaceOnUse">
+                <circle cx="20" cy="20" r="10" fill="none" stroke="currentColor" strokeWidth="1" opacity="0.1"/>
+                <path d="M20 10 L29 16 L25 27 L15 27 L11 16 Z" fill="none" stroke="currentColor" strokeWidth="1" opacity="0.1"/>
+            </pattern>
+        </defs>
+        <rect x="0" y="0" width="100%" height="100%" fill="url(#soccer-ball)" />
+    </svg>
+);
+
+const CelebrationEffect = () => {
+  const particles = Array.from({ length: 40 }).map((_, i) => {
+    const angle = Math.random() * 360;
+    const velocity = 40 + Math.random() * 60;
+    const tx = Math.cos((angle * Math.PI) / 180) * velocity;
+    const ty = Math.sin((angle * Math.PI) / 180) * velocity;
+    
+    const colors = ['bg-gulf-orange', 'bg-gulf-blue', 'bg-gulf-sky', 'bg-white'];
+    const color = colors[Math.floor(Math.random() * colors.length)];
+    const shape = Math.random() > 0.5 ? 'rounded-full' : 'rounded-sm';
+    
+    return { id: i, tx, ty, color, shape };
+  });
 
   return (
-    <div className="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-xl transition-shadow border border-gray-100 flex flex-col">
-      <div className="h-48 overflow-hidden relative">
-        <img src={reward.imageUrl} alt={reward.name} className="w-full h-full object-cover transition-transform hover:scale-110 duration-500" />
-        {!canAfford && (
-          <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
-            <span className="text-white font-bold border border-white px-3 py-1 rounded">Insuficiente</span>
-          </div>
-        )}
+    <>
+      <style>
+        {`
+          @keyframes confetti-explode {
+            0% { transform: translate(-50%, -50%) scale(0); opacity: 1; }
+            60% { opacity: 1; }
+            100% { transform: translate(calc(-50% + var(--tx)), calc(-50% + var(--ty))) scale(0.5) rotate(180deg); opacity: 0; }
+          }
+        `}
+      </style>
+      <div className="absolute inset-0 pointer-events-none overflow-hidden z-50">
+        {particles.map((p) => (
+          <div
+            key={p.id}
+            className={`absolute top-1/2 left-1/2 w-3 h-3 ${p.color} ${p.shape} shadow-sm`}
+            style={{
+              '--tx': `${p.tx * 2}px`,
+              '--ty': `${p.ty * 2}px`,
+              animation: `confetti-explode ${0.8 + Math.random() * 0.5}s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards`,
+            } as React.CSSProperties}
+          />
+        ))}
       </div>
-      <div className="p-6 flex-grow flex flex-col">
-        <h4 className="text-xl font-bold text-gray-800 mb-2 leading-tight">{reward.name}</h4>
-        <p className="text-gray-500 text-sm mb-4 flex-grow">{reward.description}</p>
-        
-        <div className="flex justify-between items-end mt-4">
-          <div>
-            <p className="text-xs text-gray-400 uppercase">Costo</p>
-            <p className={`text-3xl font-sports ${canAfford ? 'text-gulf-blue' : 'text-red-400'}`}>
-              {price.toLocaleString()} pts
-            </p>
-          </div>
-          
-          <div className="flex flex-col items-end gap-2">
-             <div className="flex items-center border rounded">
-               <button onClick={() => setQty(Math.max(1, qty - 1))} className="px-2 py-1 hover:bg-gray-100 text-gray-600">-</button>
-               <span className="px-2 w-8 text-center text-sm font-bold">{qty}</span>
-               <button onClick={() => setQty(qty + 1)} className="px-2 py-1 hover:bg-gray-100 text-gray-600">+</button>
+    </>
+  );
+};
+
+const LoadingScreen = () => {
+  const [textIndex, setTextIndex] = useState(0);
+  const loadingTexts = [
+    "INYECTANDO POTENCIA...",
+    "CALENTANDO MOTORES...",
+    "ALINEANDO ESTRATEGIA...",
+    "LLENANDO EL TANQUE...",
+    "JUGADA EN PROCESO..."
+  ];
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTextIndex((prev) => (prev + 1) % loadingTexts.length);
+    }, 1200);
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <div className="fixed inset-0 z-[100] bg-gulf-blue flex flex-col items-center justify-center overflow-hidden">
+      <StadiumAtmosphere />
+      
+      {/* Logos Header */}
+      <div className="absolute top-10 left-0 w-full flex justify-center gap-6 opacity-60 grayscale hover:grayscale-0 transition-all duration-500">
+         <img src="https://i.postimg.cc/vHgBc68D/Logo-GULF.png" alt="Gulf" className="h-12 object-contain" />
+         <div className="w-px h-12 bg-white/20"></div>
+         <img src="https://i.postimg.cc/25m8ccQr/Prolub-LOGO.png" alt="Prolub" className="h-12 object-contain" />
+      </div>
+
+      <style>{`
+        @keyframes run-progress {
+          0% { width: 0%; }
+          100% { width: 100%; }
+        }
+        @keyframes roll-ball {
+          0% { left: 0%; transform: translate(-50%, -50%) rotate(0deg); }
+          100% { left: 100%; transform: translate(-50%, -50%) rotate(720deg); }
+        }
+        .anim-progress { animation: run-progress 2.5s ease-in-out infinite; }
+        .anim-ball { animation: roll-ball 2.5s ease-in-out infinite; }
+      `}</style>
+      
+      <div className="relative z-10 flex flex-col items-center w-full max-w-lg px-8">
+         
+         {/* Animation Container */}
+         <div className="w-full relative h-20 flex items-center mb-6">
+             {/* The Track */}
+             <div className="w-full h-3 bg-white/10 rounded-full overflow-hidden relative border border-white/5 backdrop-blur-sm">
+                {/* Field markings inside bar */}
+                <div className="absolute inset-0 opacity-30" style={{backgroundImage: 'repeating-linear-gradient(90deg, transparent, transparent 19px, rgba(255,255,255,0.5) 20px)'}}></div>
+                
+                {/* Filling Energy */}
+                <div className="h-full bg-gradient-to-r from-gulf-orange via-orange-400 to-yellow-400 anim-progress shadow-[0_0_20px_rgba(243,113,33,0.6)]"></div>
              </div>
-             <button 
-              onClick={() => onAddToCart(reward, qty)}
-              disabled={!canAfford}
-              className={`px-4 py-2 rounded-lg font-bold text-sm shadow-sm transition-colors ${canAfford ? 'bg-gulf-orange text-white hover:bg-orange-600' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
-             >
-               CANJEAR
-             </button>
-          </div>
-        </div>
+
+             {/* The Ball (Leader) */}
+             <div className="absolute top-1/2 w-12 h-12 anim-ball z-20">
+                 {/* Glow Effect */}
+                 <div className="absolute inset-0 bg-gulf-orange blur-lg opacity-60 rounded-full"></div>
+                 {/* Actual Ball */}
+                 <div className="relative w-full h-full bg-white rounded-full border-2 border-gray-800 shadow-lg overflow-hidden flex items-center justify-center">
+                    <SoccerBallPattern className="w-[150%] h-[150%] text-gray-800" />
+                 </div>
+             </div>
+         </div>
+
+         {/* Text Status */}
+         <div className="bg-black/20 backdrop-blur-md px-8 py-3 rounded-2xl border border-white/10 shadow-xl">
+            <p className="text-white font-sports tracking-[0.2em] text-2xl font-bold animate-pulse text-center min-w-[280px]">
+               {loadingTexts[textIndex]}
+            </p>
+         </div>
+
+         <p className="mt-4 text-gulf-sky/60 text-[10px] uppercase tracking-widest">
+            Mundial 2026 Rewards
+         </p>
       </div>
     </div>
   );
 };
 
+const WhistleIcon = ({ className }: { className?: string }) => (
+  <svg viewBox="0 0 24 24" fill="currentColor" className={className} stroke="none">
+     <path d="M6 3C4.34315 3 3 4.34315 3 6V9C3 10.6569 4.34315 12 6 12H7V18C7 19.6569 8.34315 21 10 21C11.6569 21 13 19.6569 13 18V12H15C18.3137 12 21 9.31371 21 6C21 5.30932 20.8255 4.66444 20.5144 4.09631C20.8122 3.82917 21 3.43949 21 3H6ZM9 12V18C9 18.5523 9.44772 19 10 19C10.5523 19 11 18.5523 11 18V12H9ZM19 6C19 8.20914 17.2091 10 15 10H15V6C15 5.56066 14.8698 5.15077 14.6479 4.80829C14.2831 4.29875 13.6845 4 13 4H10H9V3H18.2676C18.7183 3.65584 19 4.39463 19 5.23607V6Z" />
+     <circle cx="11" cy="7" r="1.5" className="text-white" fill="white"/>
+  </svg>
+);
+
+const GamifiedProgressBar = ({ currentPoints }: { currentPoints: number }) => {
+  const maxPoints = 2000;
+  const percentage = Math.min(100, Math.max(0, (currentPoints / maxPoints) * 100));
+
+  const milestones = [
+    { points: 500, label: 'TITULAR' },
+    { points: 1000, label: 'CAPITÁN' },
+    { points: 1667, label: 'LEYENDA' },
+  ];
+
+  return (
+    <div className="bg-white rounded-xl shadow-lg border border-gulf-sky/30 p-6 mb-8 relative overflow-hidden group">
+      {/* Pitch Texture Background */}
+      <div className="absolute inset-0 bg-[#e8f5e9] opacity-30">
+         <div className="w-full h-full" style={{
+             backgroundImage: 'repeating-linear-gradient(90deg, transparent, transparent 49px, rgba(0,0,0,0.03) 50px, rgba(0,0,0,0.03) 99px)',
+         }}></div>
+      </div>
+      
+      <div className="flex justify-between items-end mb-8 relative z-10">
+         <div>
+            <h3 className="text-2xl font-sports text-gulf-blue uppercase tracking-wider flex items-center gap-2">
+              <Gauge className="text-gulf-orange" />
+              <span>Termómetro de Juego</span>
+            </h3>
+            <p className="text-gray-400 text-xs font-bold mt-1 tracking-wide">
+              ACELERA TU PUNTAJE PARA LLEGAR A LA ZONA DE GOL
+            </p>
+         </div>
+         <div className="text-right">
+            <span className="text-5xl font-sports text-gulf-blue leading-none">{currentPoints}</span>
+            <div className="text-gulf-orange text-[10px] font-bold uppercase tracking-widest -mt-1">Puntos Actuales</div>
+         </div>
+      </div>
+
+      <div className="relative h-12">
+         {/* Field Bar */}
+         <div className="absolute inset-0 bg-gray-200 rounded-full border-2 border-white shadow-inner overflow-hidden">
+            {/* Grass Pattern in Bar */}
+            <div className="absolute inset-0 opacity-20" style={{background: 'repeating-linear-gradient(90deg, #4ade80 0, #4ade80 10px, #22c55e 10px, #22c55e 20px)'}}></div>
+            
+            <div 
+              className="absolute top-0 left-0 h-full transition-all duration-1000 ease-out flex items-center justify-end pr-2 relative z-10"
+              style={{ 
+                width: `${percentage}%`,
+                background: 'linear-gradient(90deg, #F37121 0%, #F58025 60%, #003594 100%)'
+              }}
+            >
+               <div className="absolute inset-0 w-full h-full opacity-30" style={{
+                  backgroundImage: 'linear-gradient(45deg,rgba(255,255,255,.2) 25%,transparent 25%,transparent 50%,rgba(255,255,255,.2) 50%,rgba(255,255,255,.2) 75%,transparent 75%,transparent)', 
+                  backgroundSize: '20px 20px'
+               }}></div>
+            </div>
+         </div>
+
+         {milestones.map(m => (
+           <div 
+             key={m.points} 
+             className="absolute top-0 bottom-0 w-px bg-black/10 z-10"
+             style={{ left: `${(m.points / maxPoints) * 100}%` }}
+           >
+              <div className="absolute -top-6 left-1/2 -translate-x-1/2 flex flex-col items-center group cursor-pointer">
+                 <Trophy size={14} className="text-gray-400 group-hover:text-gulf-orange transition-colors" />
+                 <div className="bg-gulf-blue text-white text-[8px] px-1 rounded opacity-0 group-hover:opacity-100 transition-opacity absolute bottom-full mb-1 whitespace-nowrap">
+                   {m.label} ({m.points})
+                 </div>
+              </div>
+           </div>
+         ))}
+
+         <div 
+            className="absolute top-1/2 -translate-y-1/2 transition-all duration-1000 ease-out z-20"
+            style={{ left: `calc(${percentage}% - 20px)` }} 
+         > 
+             <div className="relative group">
+                <div className="w-10 h-10 bg-white rounded-full border-4 border-white shadow-lg flex items-center justify-center animate-bounce">
+                   <img src="https://upload.wikimedia.org/wikipedia/commons/d/d3/Soccerball.svg" alt="Ball" className="w-full h-full opacity-80" />
+                </div>
+             </div>
+         </div>
+      </div>
+    </div>
+  );
+};
+
+const RewardCard: React.FC<RewardCardProps> = ({ 
+  reward, 
+  currentUser, 
+  currentPoints, 
+  onAddToCart 
+}) => {
+  const [qty, setQty] = useState(1);
+  const [showSuccess, setShowSuccess] = useState(false);
+  const price = currentUser.type === 'Pareto' ? reward.pointsPareto : reward.pointsNormal;
+  const canAfford = currentPoints >= price;
+  const isHighTier = price > 400;
+
+  const handleClick = () => {
+    onAddToCart(reward, qty);
+    setShowSuccess(true);
+    setTimeout(() => setShowSuccess(false), 2000);
+  };
+
+  return (
+    <div className={`relative group perspective-1000 select-none ${showSuccess ? 'z-20' : 'z-0'}`}>
+      <style>{`
+        @keyframes shine-pass {
+          0% { left: -100%; opacity: 0; }
+          50% { opacity: 0.5; }
+          100% { left: 200%; opacity: 0; }
+        }
+        @keyframes pop-icon {
+          0% { transform: scale(0) rotate(-45deg); opacity: 0; }
+          70% { transform: scale(1.4) rotate(10deg); }
+          100% { transform: scale(1) rotate(0deg); opacity: 1; }
+        }
+        .shine-effect {
+           position: absolute;
+           top: 0;
+           width: 50%;
+           height: 100%;
+           background: linear-gradient(to right, transparent, rgba(255,255,255,0.8), transparent);
+           transform: skewX(-20deg);
+           left: -100%;
+           pointer-events: none;
+        }
+        .group:hover .shine-effect {
+           animation: shine-pass 0.8s ease-in-out forwards;
+        }
+        .pop-in {
+            animation: pop-icon 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
+      `}</style>
+      
+      {/* Enhanced Card Body - Trading Card / Sticker Style */}
+      <div className={`
+        bg-white rounded-xl shadow-xl transition-all duration-300 transform 
+        hover:-translate-y-3 hover:shadow-2xl hover:shadow-gulf-blue/20 border-0 overflow-hidden relative
+        ${showSuccess ? 'ring-4 ring-gulf-orange scale-105 shadow-[0_0_40px_rgba(243,113,33,0.5)]' : ''}
+      `}>
+          {/* Card Border / Frame Effect */}
+          <div className={`absolute inset-0 border-[6px] rounded-xl pointer-events-none z-20 ${isHighTier ? 'border-yellow-400/30' : 'border-gray-100'}`}></div>
+
+          {/* Dynamic Background */}
+          <div className="absolute inset-0 bg-gradient-to-br from-white via-gray-50 to-gray-100 z-0"></div>
+          <SoccerBallPattern className="absolute inset-0 text-gulf-blue/5 z-0" />
+          
+          {/* Top Flag Banner - Diagonal Cut */}
+          <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-gulf-blue via-gulf-blue to-transparent opacity-10 rounded-bl-full z-0 pointer-events-none"></div>
+
+          {/* Header Strip - "The Flag" */}
+          <div className="relative z-10 h-3 flex shadow-sm">
+             <div className="w-1/3 bg-[#003594]"></div>
+             <div className="w-1/3 bg-[#F37121]"></div>
+             <div className="w-1/3 bg-[#B9D9EB]"></div>
+          </div>
+          
+          <div className="p-5 flex flex-col h-full relative z-10">
+            
+            {/* Image Area - Sticker Style */}
+            <div className="relative h-48 mb-4 group-hover:scale-[1.03] transition-transform duration-500">
+               <div className="absolute inset-0 bg-white rounded-lg shadow-inner border border-gray-200 rotate-1 group-hover:rotate-0 transition-transform duration-500"></div>
+               
+               <div className="absolute inset-0 flex items-center justify-center p-4">
+                  <img src={reward.imageUrl} alt={reward.name} className="max-w-full max-h-full object-contain drop-shadow-lg relative z-10" />
+                  {/* Floor Shadow for object */}
+                  <div className="absolute bottom-4 w-2/3 h-4 bg-black/20 blur-md rounded-[100%]"></div>
+               </div>
+
+               {/* Shine Effect */}
+               <div className="shine-effect z-20"></div>
+
+               {/* Badges */}
+               {isHighTier && (
+                 <div className="absolute -top-2 -right-2 z-30 animate-bounce" style={{animationDuration: '3s'}}>
+                    <div className="bg-yellow-400 text-gulf-blue text-[10px] font-black italic px-3 py-1 rounded-full shadow-lg border-2 border-white flex items-center gap-1 transform rotate-12">
+                       <Sparkles size={10} /> CRACK
+                    </div>
+                 </div>
+               )}
+
+               {!canAfford && (
+                 <div className="absolute inset-0 bg-gray-200/80 backdrop-blur-[1px] z-20 flex items-center justify-center rounded-lg">
+                    <div className="bg-red-600 text-white text-xs font-black px-4 py-2 transform -rotate-12 border-2 border-white shadow-2xl uppercase tracking-widest rounded-sm">
+                       FUERA DE JUEGO
+                    </div>
+                 </div>
+               )}
+               
+               {showSuccess && (
+                 <div className="absolute inset-0 bg-gulf-blue/90 z-30 flex flex-col items-center justify-center rounded-lg animate-in fade-in duration-200 backdrop-blur-sm">
+                    <CheckCircle className="text-gulf-orange w-16 h-16 mb-2 pop-in" strokeWidth={3} />
+                    <span className="text-white font-sports text-2xl tracking-widest animate-pulse">¡FICHAJE!</span>
+                 </div>
+               )}
+            </div>
+
+            {/* Content */}
+            <div className="flex-grow">
+               <div className="flex justify-between items-start mb-2">
+                  <h3 className="font-sports text-3xl leading-none text-gulf-blue uppercase truncate pr-2 tracking-wide">{reward.name}</h3>
+               </div>
+               
+               {/* Description with icon */}
+               <div className="flex gap-2 mb-4">
+                  <div className="mt-0.5 min-w-[3px] h-full bg-gulf-orange/30 rounded-full"></div>
+                  <p className="text-xs text-gray-500 font-medium line-clamp-2 leading-relaxed">
+                    {reward.description}
+                  </p>
+               </div>
+            </div>
+
+            {/* Price Tag & Controls */}
+            <div className="mt-auto bg-gray-50 rounded-xl p-3 border border-gray-100">
+               <div className="flex items-end justify-between mb-3">
+                  <div>
+                     <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Valor de Pase</span>
+                     <div className="flex items-center gap-1">
+                        <span className={`text-4xl font-sports leading-none ${canAfford ? 'text-gulf-orange drop-shadow-sm' : 'text-gray-400'}`}>
+                           {price}
+                        </span>
+                        <span className="text-[10px] font-bold text-gulf-blue bg-white px-1 rounded border border-gray-200 shadow-sm">PTS</span>
+                     </div>
+                  </div>
+                  
+                  {/* Quantity Selector - Styled like a scoreboard counter */}
+                  <div className="flex flex-col items-end">
+                      <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Cantidad</span>
+                      <div className="flex items-center bg-white rounded-lg border border-gray-200 h-8 shadow-sm overflow-hidden">
+                         <button onClick={() => setQty(Math.max(1, qty - 1))} className="px-3 hover:bg-gray-100 text-gulf-blue font-bold transition-colors border-r border-gray-100 h-full flex items-center">-</button>
+                         <span className="w-8 text-center font-mono font-bold text-lg text-gulf-blue">{qty}</span>
+                         <button onClick={() => setQty(qty + 1)} className="px-3 hover:bg-gray-100 text-gulf-blue font-bold transition-colors border-l border-gray-100 h-full flex items-center">+</button>
+                      </div>
+                  </div>
+               </div>
+
+               <button 
+                 onClick={handleClick}
+                 disabled={!canAfford}
+                 className={`
+                   w-full relative overflow-hidden rounded-lg py-3 flex items-center justify-center gap-2 transition-all duration-300 group/btn
+                   ${canAfford 
+                     ? 'bg-gradient-to-r from-gulf-orange to-orange-600 text-white shadow-lg hover:shadow-orange-500/40 hover:-translate-y-1 border-b-4 border-[#c25a1a] active:border-b-0 active:translate-y-1' 
+                     : 'bg-gray-200 text-gray-400 cursor-not-allowed border-b-4 border-gray-300'}
+                 `}
+               >
+                  {/* Whistle Icon */}
+                  <WhistleIcon className={`w-6 h-6 ${canAfford ? 'animate-pulse text-white' : 'text-gray-400'}`} />
+                  
+                  <span className="font-sports text-2xl tracking-wide pt-1 relative z-10">
+                     {canAfford ? 'JUGAR BALÓN' : 'BLOQUEADO'}
+                  </span>
+                  
+                  {/* Referee Stripe Pattern on Button Hover */}
+                  {canAfford && (
+                      <div className="absolute inset-0 opacity-0 group-hover/btn:opacity-10 transition-opacity pointer-events-none" style={{
+                          backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 10px, #fff 10px, #fff 20px)'
+                      }}></div>
+                  )}
+               </button>
+            </div>
+          </div>
+      </div>
+    </div>
+  );
+};
+
+// Hidden card component for image generation
+const HiddenJerseyCard = React.forwardRef<HTMLDivElement, { name: string }>(({ name }, ref) => (
+  <div ref={ref} className="fixed left-[-2000px] top-[-2000px] w-[1080px] h-[1080px] bg-gulf-blue overflow-hidden flex flex-col items-center justify-between text-white font-body p-0 border-0">
+    {/* High Quality Background */}
+    <div className="absolute inset-0 bg-gradient-to-br from-[#003594] to-[#001030] z-0"></div>
+    <div className="absolute inset-0 opacity-20 bg-[url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAAIklEQVQIW2NkQAKrVq36zwjjgzjwqFChAoMBJAoSIwIKCgQA8g8X66D6W84AAAAASUVORK5CYII=')] z-0"></div>
+    
+    {/* Stadium / Crowd Background Image blended */}
+    <img 
+      src="https://i.postimg.cc/KYpT63Zv/Estadio-Gulf-Prolub.png" 
+      alt="Background" 
+      crossOrigin="anonymous"
+      className="absolute inset-0 w-full h-full object-cover opacity-40 mix-blend-overlay z-0"
+    />
+
+    {/* Header Area */}
+    <div className="relative z-10 w-full flex flex-col items-center pt-16 pb-8">
+        <div className="flex items-center gap-12 mb-6">
+             <div className="bg-white p-4 rounded-2xl shadow-2xl">
+                 <img src="https://i.postimg.cc/vHgBc68D/Logo-GULF.png" crossOrigin="anonymous" alt="Gulf" className="h-20 object-contain" />
+             </div>
+             <div className="h-16 w-0.5 bg-white/50 rounded-full"></div>
+             <div className="bg-white p-4 rounded-2xl shadow-2xl">
+                 <img src="https://i.postimg.cc/25m8ccQr/Prolub-LOGO.png" crossOrigin="anonymous" alt="Prolub" className="h-20 object-contain" />
+             </div>
+        </div>
+        
+        <h1 className="text-8xl font-sports uppercase tracking-widest text-white drop-shadow-[0_4px_4px_rgba(0,0,0,0.5)] mt-4">
+           FICHAJE OFICIAL
+        </h1>
+        
+        <div className="bg-white px-12 py-3 mt-4 shadow-[0_0_30px_rgba(255,255,255,0.2)] rounded-full flex items-center gap-4 border-4 border-gulf-orange">
+           <Trophy className="text-gulf-orange w-8 h-8" fill="currentColor" />
+           <p className="text-4xl text-gulf-blue uppercase tracking-[0.2em] font-bold">
+              JUGADOR DE LA CANCHA
+           </p>
+           <Trophy className="text-gulf-orange w-8 h-8" fill="currentColor" />
+        </div>
+    </div>
+
+    {/* The Full Kit Visual */}
+    <div className="relative z-20 flex flex-col items-center justify-center flex-grow transform scale-[1.1] translate-y-[-10px]">
+        
+        {/* Jersey Container - explicit z-20 to be above shorts */}
+        <div className="relative z-20">
+            {/* Sleeves */}
+            <div className="absolute top-4 -left-20 w-32 h-48 bg-[#002870] rounded-l-3xl transform -rotate-12 border-4 border-white/10 shadow-2xl flex items-center justify-center overflow-hidden">
+                <div className="absolute bottom-0 w-full h-6 bg-gulf-orange"></div>
+                <img src="https://upload.wikimedia.org/wikipedia/commons/d/d3/Soccerball.svg" crossOrigin="anonymous" className="w-12 h-12 opacity-50 mix-blend-overlay" />
+            </div>
+            <div className="absolute top-4 -right-20 w-32 h-48 bg-[#002870] rounded-r-3xl transform rotate-12 border-4 border-white/10 shadow-2xl flex items-center justify-center overflow-hidden">
+                <div className="absolute bottom-0 w-full h-6 bg-gulf-orange"></div>
+                <Flag className="w-12 h-12 text-white opacity-50" />
+            </div>
+
+            {/* Shirt Body */}
+            <div className="relative w-80 h-96 bg-[#003594] rounded-t-[3rem] rounded-b-2xl shadow-[0_0_50px_rgba(0,0,0,0.5)] border-4 border-white/10 overflow-hidden flex flex-col items-center">
+                
+                {/* Texture */}
+                <div className="absolute inset-0 opacity-10 bg-[url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAAIklEQVQIW2NkQAKrVq36zwjjgzjwqFChAoMBJAoSIwIKCgQA8g8X66D6W84AAAAASUVORK5CYII=')]"></div>
+                
+                {/* Design Lines */}
+                <div className="absolute top-0 left-0 w-full h-full">
+                    <div className="w-full h-full bg-gradient-to-b from-transparent via-gulf-blue to-black/20"></div>
+                </div>
+
+                {/* Collar */}
+                <div className="w-40 h-8 border-b-8 border-white/20 rounded-b-full mb-8"></div>
+
+                {/* Name - High Z-index for visibility */}
+                <div className="w-full px-4 text-center z-50 mt-6 mb-2 flex items-center justify-center min-h-[4rem] relative">
+                     <span className="font-sports text-3xl font-bold uppercase tracking-widest text-white drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)] leading-tight break-words max-w-full block">
+                         {name}
+                     </span>
+                </div>
+
+                {/* Number */}
+                <div className="z-10 relative mt-2">
+                     <span className="text-[12rem] font-sports text-white leading-none drop-shadow-[0_10px_10px_rgba(0,0,0,0.5)]" 
+                           style={{ 
+                             WebkitTextStroke: '4px #F37121',
+                             textShadow: '0 10px 20px rgba(0,0,0,0.5)'
+                           }}>
+                        10
+                     </span>
+                </div>
+
+                {/* Sponsor on lower back */}
+                <div className="mt-auto mb-6 opacity-80 z-10">
+                     <img src="https://i.postimg.cc/vHgBc68D/Logo-GULF.png" crossOrigin="anonymous" className="h-8 filter brightness-0 invert" />
+                </div>
+            </div>
+        </div>
+
+        {/* Shorts - explicit z-10 to be below jersey */}
+        <div className="relative -mt-10 z-10 flex w-80 h-48 filter drop-shadow-2xl">
+             {/* Left Leg */}
+             <div className="w-1/2 h-full bg-white rounded-bl-3xl border-r border-gray-200 relative overflow-hidden flex items-end justify-center pb-4">
+                 <div className="absolute top-0 w-full h-full bg-gradient-to-b from-gray-100 to-white"></div>
+                 {/* Stripe */}
+                 <div className="absolute left-0 top-0 h-full w-4 bg-gulf-blue"></div>
+                 {/* Logo */}
+                 <img src="https://i.postimg.cc/25m8ccQr/Prolub-LOGO.png" crossOrigin="anonymous" className="h-10 object-contain relative z-10 mb-2" />
+             </div>
+             {/* Right Leg */}
+             <div className="w-1/2 h-full bg-white rounded-br-3xl relative overflow-hidden flex items-end justify-center pb-4">
+                 <div className="absolute top-0 w-full h-full bg-gradient-to-b from-gray-100 to-white"></div>
+                 {/* Stripe */}
+                 <div className="absolute right-0 top-0 h-full w-4 bg-gulf-orange"></div>
+                 {/* Number */}
+                 <span className="text-4xl font-sports text-gulf-blue font-bold relative z-10 mb-2">10</span>
+             </div>
+        </div>
+    </div>
+
+    {/* Footer info */}
+    <div className="relative z-10 w-full bg-black/40 backdrop-blur-md py-6 mt-auto border-t-4 border-gulf-orange">
+        <div className="flex justify-center gap-12 text-center">
+             <div>
+                <p className="text-gulf-sky text-xl uppercase tracking-widest">Posición</p>
+                <p className="text-4xl font-sports text-white">CAPITÁN</p>
+             </div>
+             <div>
+                <p className="text-gulf-sky text-xl uppercase tracking-widest">Equipo</p>
+                <p className="text-4xl font-sports text-white">PROLUB GULF</p>
+             </div>
+             <div>
+                <p className="text-gulf-sky text-xl uppercase tracking-widest">Temporada</p>
+                <p className="text-4xl font-sports text-white">2026</p>
+             </div>
+        </div>
+    </div>
+
+  </div>
+));
+
 const App = () => {
-  // Application State
   const [view, setView] = useState<ViewState>('login');
   const [currentUser, setCurrentUser] = useState<Client | null>(null);
   const [currentPoints, setCurrentPoints] = useState<number>(0);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [redemptionHistory, setRedemptionHistory] = useState<CartItem[]>([]); 
+  const [downloading, setDownloading] = useState(false);
+  const exportRef = useRef<HTMLDivElement>(null);
 
-  // Login Form State
   const [loginId, setLoginId] = useState('');
   const [loginPass, setLoginPass] = useState('');
   const [clientsList, setClientsList] = useState<Client[]>([]);
 
-  // Order Form State
   const [orderDetails, setOrderDetails] = useState<OrderDetails>({
     address: '', receiver: '', city: '', phone: ''
   });
 
-  // Load Data on Mount
   useEffect(() => {
     const db = getDatabase();
     setClientsList(db.clients);
   }, [view]);
 
-  // Actions
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    // Validate credentials using ID (businessId) and Password
     const user = clientsList.find(c => c.businessId === loginId && c.password === loginPass);
-    
     if (user) {
       setCurrentUser(user);
       setCurrentPoints(getPoints(user.pointOfSale));
       setView('store');
     } else {
-      alert('ID o Contraseña incorrectos.');
+      alert('TARJETA ROJA: ID o Contraseña incorrectos.');
     }
   };
 
   const addToCart = (reward: Reward, qty: number) => {
     if (qty <= 0) return;
-    
     const price = currentUser?.type === 'Pareto' ? reward.pointsPareto : reward.pointsNormal;
     const existing = cart.find(c => c.id === reward.id);
-
     if (existing) {
       setCart(cart.map(c => c.id === reward.id ? { ...c, quantity: c.quantity + qty } : c));
     } else {
       setCart([...cart, { ...reward, quantity: qty, appliedPrice: price || 0 }]);
     }
-    alert(`¡${qty}x ${reward.name} agregado al carrito!`);
   };
 
   const removeFromCart = (id: string) => {
@@ -125,94 +653,202 @@ const App = () => {
     return cart.reduce((acc, item) => acc + (item.appliedPrice * item.quantity), 0);
   };
 
-  const handleCheckout = (e: React.FormEvent) => {
-    e.preventDefault();
-    const total = calculateTotal();
-
-    if (!currentUser) return;
-
-    if (total > currentPoints) {
-      alert(`Error: No tienes suficientes puntos. Necesitas ${total}, tienes ${currentPoints}.`);
-      return;
-    }
-
-    setLoading(true);
-
-    // Simulate Network Request
-    setTimeout(() => {
-      const success = deductPoints(currentUser.pointOfSale, total);
-      if (success) {
-        // Log "Email" to console
-        console.log(`
-          --- EMAIL ENVIADO ---
-          Para: agallego@gulfcolombia.com, asismercadeo@gulfcolombia.com
-          Asunto: Nuevo Canje de Premios - ${currentUser.pointOfSale}
-          
-          Detalles del Pedido:
-          Punto de Venta: ${currentUser.pointOfSale}
-          ID Cliente (NIT): ${currentUser.businessId}
-          Tipo Cliente: ${currentUser.type}
-          Items:
-          ${cart.map(c => `- ${c.quantity}x ${c.name} (${c.appliedPrice} pts c/u)`).join('\n')}
-          
-          Total Puntos Redimidos: ${total}
-          
-          Datos de Envío:
-          Recibe: ${orderDetails.receiver}
-          Dirección: ${orderDetails.address}
-          Ciudad: ${orderDetails.city}
-          Teléfono: ${orderDetails.phone}
-          ---------------------
-        `);
+  const handleDownloadJersey = async () => {
+    if (exportRef.current) {
+      setDownloading(true);
+      try {
+        // Force a small delay to ensure images are loaded
+        await new Promise(resolve => setTimeout(resolve, 500));
         
-        setCurrentPoints(prev => prev - total);
-        setCart([]);
-        setView('success');
-      } else {
-        alert('Error al procesar la transacción.');
+        const canvas = await html2canvas(exportRef.current, {
+          scale: 1, // 1080px as defined in CSS
+          useCORS: true,
+          backgroundColor: '#003594',
+          allowTaint: true,
+          logging: false
+        });
+        const link = document.createElement('a');
+        link.download = `Uniforme_ProlubGulf_${currentUser?.businessId || '10'}.png`;
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+      } catch (err) {
+        console.error("Error generating image", err);
+        alert("Hubo un error generando tu uniforme. Intenta de nuevo.");
       }
-      setLoading(false);
-    }, 1500);
+      setDownloading(false);
+    }
   };
 
-  // --- Render Helpers ---
+  const handleCheckout = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const total = calculateTotal();
+    if (!currentUser) return;
+    if (total > currentPoints) {
+      const missing = total - currentPoints;
+      alert(`¡Oh no! Te faltan ${missing.toLocaleString()} puntos para este premio. Sigue jugando para conseguirlos.`);
+      return;
+    }
+    
+    setLoading(true);
+    let emailSent = false;
+    let emailError = '';
 
-  // Header Component
+    const itemsText = cart.map(c => `- ${c.quantity}x ${c.name} (${c.appliedPrice} pts)`).join('\n');
+
+    try {
+        // --- EMAIL JS CONFIGURATION ---
+        const SERVICE_ID = 'service_6u7jiep';
+        const TEMPLATE_ID = 'template_y4tpgfw';
+        const PUBLIC_KEY = 'pfbP31YCRZ3dzBat5';
+        
+        // Destinatarios administrativos - SIN ESPACIOS PARA EVITAR ERRORES
+        const adminEmails = "asismercadeo@gulf.com,agallego@gulfcolombia.com";
+
+        // Inicializar explícitamente para evitar errores (aunque se llame múltiples veces no afecta)
+        emailjs.init(PUBLIC_KEY);
+
+        // Send email with Public Key included as 4th argument
+        const templateParams = {
+            to_email: adminEmails,
+            to_name: 'Administrador Prolub Gulf',
+            from_name: currentUser.pointOfSale,
+            from_email: 'noreply@rewards.com', // Optional standard param
+            subject: `Nuevo Canje - ${currentUser.pointOfSale}`,
+            message: itemsText, // Standard param fallback
+            message_html: itemsText, // Another common fallback
+            my_message: itemsText, // Another common fallback
+            notes: itemsText,
+            
+            // Specific template fields
+            email: adminEmails, 
+            reply_to: adminEmails,
+            customer_name: currentUser.pointOfSale,
+            customer_id: currentUser.businessId,
+            order_items: itemsText,
+            total_points: total,
+            receiver_name: orderDetails.receiver,
+            phone: orderDetails.phone,
+            address: orderDetails.address,
+            city: orderDetails.city
+        };
+        
+        console.log("Enviando datos a EmailJS:", templateParams);
+
+        const response = await emailjs.send(SERVICE_ID, TEMPLATE_ID, templateParams, PUBLIC_KEY);
+        console.log('EmailJS Response:', response);
+
+        if (response.status === 200) {
+           emailSent = true;
+        } else {
+           throw new Error(`Status ${response.status}: ${response.text}`);
+        }
+
+    } catch (error: any) {
+        let errorMsg = 'Unknown error';
+        
+        // Handle various error types to avoid [object Object]
+        if (error instanceof Error) {
+            errorMsg = error.message;
+        } else if (typeof error === 'object' && error !== null) {
+            // EmailJS specific error objects usually have a 'text' property
+            if (error.text) {
+                errorMsg = error.text;
+            } else {
+                // Fallback for other objects
+                try {
+                    const stringified = JSON.stringify(error);
+                    if (stringified !== '{}') errorMsg = stringified;
+                    else errorMsg = 'Error en el envío (objeto vacío)';
+                } catch {
+                    errorMsg = 'Error no serializable';
+                }
+            }
+        } else {
+            errorMsg = String(error);
+        }
+
+        console.error('Email Failed:', errorMsg);
+        emailSent = false;
+        emailError = errorMsg;
+    }
+
+    // Continuamos con el canje INDEPENDIENTEMENTE de si el correo se envió o no
+    const success = deductPoints(currentUser.pointOfSale, total);
+    
+    setLoading(false);
+
+    if (success) {
+        setRedemptionHistory(prev => [...prev, ...cart]);
+        setCurrentPoints(prev => prev - total);
+        setCart([]);
+        
+        if (!emailSent) {
+            // Avisar al usuario pero permitir el éxito
+            alert(`PEDIDO CONFIRMADO (Sin Correo).\n\nEl canje fue exitoso en el sistema, pero no se pudo enviar el correo de notificación.\nError: ${emailError}`);
+        }
+        
+        setView('success');
+    } else {
+        alert('Error CRÍTICO: No se pudieron descontar los puntos. Por favor intenta de nuevo o contacta soporte.');
+    }
+  };
+
   const Header = () => (
-    <header className="bg-gulf-blue text-white shadow-lg sticky top-0 z-50 border-b-4 border-gulf-orange">
-      <div className="container mx-auto px-4 py-4 flex justify-between items-center">
-        <div className="flex items-center space-x-3">
-          <div className="bg-white p-1 rounded-full">
-             <Trophy size={32} className="text-gulf-orange" />
+    <header className="bg-gulf-blue text-white shadow-xl sticky top-0 z-50 relative">
+      <BuntingFlags />
+      <div className="absolute bottom-0 left-0 w-full h-1 bg-gradient-to-r from-gulf-orange via-gulf-sky to-gulf-orange z-30"></div>
+      <div className="container mx-auto px-4 py-3 flex justify-between items-center relative z-30">
+        <div className="flex items-center space-x-4 cursor-pointer group" onClick={() => currentUser && setView('store')}>
+          <div className="bg-white p-1.5 rounded-full shadow-lg border-2 border-gulf-sky/30 group-hover:scale-110 transition-transform">
+             <img src="https://i.postimg.cc/vHgBc68D/Logo-GULF.png" alt="Gulf Logo" className="w-8 h-8 object-contain" />
           </div>
           <div>
-             <h1 className="text-2xl font-sports tracking-wide leading-none">PROLUB GULF</h1>
-             <p className="text-xs text-gulf-lightblue font-bold tracking-wider">MUNDIAL 2026 REWARDS</p>
+             <h1 className="text-2xl font-sports tracking-wide leading-none text-white italic">PROLUB GULF</h1>
+             <div className="flex items-center gap-1">
+                 <Flag size={10} className="text-gulf-orange" />
+                 <p className="text-[10px] text-gulf-sky font-bold tracking-[0.2em] uppercase">Mundial 2026</p>
+             </div>
           </div>
         </div>
         
         {currentUser && view !== 'login' && view !== 'admin' && (
           <div className="flex items-center space-x-6">
-            <div className="hidden md:block text-right">
-              <p className="text-sm opacity-80">{currentUser.pointOfSale}</p>
-              <p className="font-sports text-xl text-gulf-orange">{currentPoints.toLocaleString()} Pts</p>
+            {/* Scoreboard Style Widget */}
+            <div className="hidden md:flex bg-black/80 text-gulf-orange border-2 border-gray-700 rounded-lg px-3 py-1 font-mono items-center space-x-3 shadow-lg transform skew-x-[-10deg]">
+               <div className="transform skew-x-[10deg] flex flex-col items-center leading-none border-r border-gray-600 pr-2">
+                  <span className="text-[8px] text-gray-400">HOME</span>
+                  <span className="text-white text-lg font-bold">{currentUser.businessId.slice(-3)}</span>
+               </div>
+               <div className="transform skew-x-[10deg] flex flex-col items-center leading-none">
+                  <span className="text-[8px] text-gray-400">PUNTOS</span>
+                  <span className="text-xl font-bold text-yellow-400 animate-pulse">{currentPoints.toLocaleString()}</span>
+               </div>
             </div>
             
-            <button onClick={() => setView('store')} className="hover:text-gulf-orange transition-colors">
-              Catálogo
-            </button>
+            {view !== 'profile' ? (
+                <button onClick={() => setView('profile')} className="group flex flex-col items-center hover:text-gulf-orange transition-colors" title="El Camerino">
+                   <div className="relative p-1 bg-white/10 rounded-full">
+                      <Shirt size={20} />
+                      <div className="absolute top-0 right-0 w-2 h-2 bg-gulf-orange rounded-full animate-pulse border border-gulf-blue"></div>
+                   </div>
+                </button>
+            ) : (
+                <button onClick={() => setView('store')} className="hover:text-gulf-orange transition-colors flex items-center gap-1 text-sm font-bold bg-white/10 px-3 py-1 rounded-full">
+                  <ChevronRight size={16} /> CAMPO DE JUEGO
+                </button>
+            )}
             
-            <button onClick={() => cart.length > 0 && setView('checkout')} className="relative hover:text-gulf-orange transition-colors">
-              <ShoppingCart size={24} />
+            <button onClick={() => cart.length > 0 && setView('checkout')} className="relative p-2 hover:bg-white/10 rounded-full transition-colors group">
+              <ShoppingCart size={20} className="group-hover:text-yellow-400 transition-colors" />
               {cart.length > 0 && (
-                <span className="absolute -top-2 -right-2 bg-gulf-orange text-white text-xs font-bold w-5 h-5 flex items-center justify-center rounded-full">
+                <span className="absolute top-0 right-0 bg-red-600 text-white text-[10px] font-bold w-4 h-4 flex items-center justify-center rounded-full shadow-sm border border-white">
                   {cart.reduce((a, b) => a + b.quantity, 0)}
                 </span>
               )}
             </button>
 
-            <button onClick={() => { setCurrentUser(null); setView('login'); setCart([]); }} className="text-red-400 hover:text-red-300" title="Salir">
-              <LogOut size={24} />
+            <button onClick={() => { setCurrentUser(null); setView('login'); setCart([]); setRedemptionHistory([]); }} className="text-gulf-sky hover:text-red-400 transition-colors" title="Salir">
+              <LogOut size={20} />
             </button>
           </div>
         )}
@@ -220,56 +856,147 @@ const App = () => {
     </header>
   );
 
-  // Views
   if (view === 'login') {
     return (
-      <div className="min-h-screen flex flex-col bg-gray-100">
-        <div className="flex-grow flex items-center justify-center p-4" 
-             style={{backgroundImage: 'url("https://www.transparenttextures.com/patterns/cubes.png")', backgroundColor: '#f3f4f6'}}>
-          <div className="bg-white rounded-2xl shadow-2xl overflow-hidden max-w-md w-full border border-gray-200">
-            <div className="bg-gulf-blue p-8 text-center relative overflow-hidden">
-               <div className="absolute top-0 left-0 w-full h-full opacity-10 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')]"></div>
-               <Trophy className="mx-auto text-gulf-orange mb-4 w-16 h-16 animate-bounce" />
-               <h2 className="text-4xl font-sports text-white mb-2 relative z-10">ACCESO EXCLUSIVO</h2>
-               <p className="text-gulf-lightblue text-sm relative z-10">Plataforma de Fidelización Prolub SA</p>
-            </div>
-            <form onSubmit={handleLogin} className="p-8 space-y-6">
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-2">Usuario / ID</label>
-                <div className="relative">
-                   <Hash className="absolute left-3 top-3 text-gray-400" size={20}/>
-                   <input 
-                    type="text"
-                    required
-                    placeholder="# Ingrese el ID asignado"
-                    className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gulf-orange focus:border-transparent outline-none"
-                    value={loginId}
-                    onChange={(e) => setLoginId(e.target.value)}
-                   />
-                </div>
+      <div className="min-h-screen flex flex-col items-center justify-center p-4 relative overflow-hidden bg-gulf-blue">
+        
+        <style>{`
+          @keyframes float-logo {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+          }
+          @keyframes wave-flag {
+             0%, 100% { transform: translateY(0); }
+             50% { transform: translateY(-10px); }
+          }
+          .anim-float { animation: float-logo 3s ease-in-out infinite; }
+          .anim-wave { animation: wave-flag 2s ease-in-out infinite; }
+        `}</style>
+
+        {/* --- ESTADIO GULF - PROLUB BACKGROUND --- */}
+        <div className="absolute inset-0 z-0">
+           {/* Stadium Crowd Image */}
+           <img 
+             src="https://i.postimg.cc/KYpT63Zv/Estadio-Gulf-Prolub.png" 
+             alt="Estadio Gulf Prolub" 
+             className="w-full h-full object-cover"
+           />
+           {/* Blue Branding Overlay (Multiplying the Gulf Blue over the image) */}
+           <div className="absolute inset-0 bg-gulf-blue/80 mix-blend-multiply"></div>
+           
+           {/* Architectural Header Signage */}
+           <div className="absolute top-0 left-0 w-full z-10">
+              <div className="w-full h-32 bg-gradient-to-b from-black/90 to-transparent flex items-start justify-center pt-6">
+                  <div className="bg-[#00205B] border-y-4 border-gulf-orange px-12 py-3 transform -skew-x-12 shadow-[0_0_50px_rgba(243,113,33,0.6)] relative overflow-hidden">
+                     {/* Gloss effect on sign */}
+                     <div className="absolute top-0 left-0 w-full h-1/2 bg-white/10 pointer-events-none"></div>
+                     <h1 className="text-white font-sports text-4xl md:text-5xl tracking-[0.2em] transform skew-x-12 drop-shadow-[0_4px_0_#000]">
+                       ESTADIO GULF - PROLUB
+                     </h1>
+                  </div>
               </div>
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-2">Contraseña</label>
-                <div className="relative">
-                   <Settings className="absolute left-3 top-3 text-gray-400" size={20}/>
-                   <input 
-                    type="password"
-                    required
-                    placeholder="Ingrese su clave"
-                    className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gulf-orange focus:border-transparent outline-none"
-                    value={loginPass}
-                    onChange={(e) => setLoginPass(e.target.value)}
-                   />
-                </div>
+           </div>
+
+           {/* Animated Crowd & Flags Layer at bottom */}
+           <div className="absolute bottom-0 w-full h-1/3 bg-gradient-to-t from-black via-black/50 to-transparent flex items-end justify-center pb-0 overflow-hidden">
+              <div className="flex gap-4 opacity-60 w-[200%] animate-[marquee_20s_linear_infinite]">
+                 {Array.from({length: 30}).map((_, i) => (
+                    <div key={i} className="flex flex-col items-center transform scale-75 md:scale-100" style={{ animationDelay: `${i * 0.1}s` }}>
+                       <div className={`w-1 h-24 bg-gray-400 transform origin-bottom rotate-${Math.random() > 0.5 ? '6' : '-6'}`}></div>
+                       <div className={`w-16 h-10 ${['bg-red-600','bg-yellow-400','bg-blue-600','bg-white','bg-green-600'][i%5]} absolute top-0 animate-pulse`}></div>
+                    </div>
+                 ))}
               </div>
-              <button type="submit" className="w-full bg-gulf-orange hover:bg-orange-600 text-white font-bold py-3 rounded-lg transition-all transform hover:scale-[1.02] shadow-lg">
-                INGRESAR AL JUEGO
-              </button>
-            </form>
-            <div className="bg-gray-50 p-4 text-center border-t">
-              <button onClick={() => setView('admin')} className="text-xs text-gray-400 hover:text-gulf-blue">Acceso Administrativo</button>
+           </div>
+        </div>
+
+        {/* Prolub Logo Top Left (Floating above stadium) */}
+        <div className="absolute top-8 left-8 z-20 anim-float hidden md:block">
+           <div className="bg-white/95 backdrop-blur-sm p-3 rounded-xl shadow-[0_0_20px_rgba(255,255,255,0.3)] border-2 border-gulf-orange">
+             <img src="https://i.postimg.cc/25m8ccQr/Prolub-LOGO.png" alt="Prolub Logo" className="w-32 object-contain" />
+           </div>
+        </div>
+
+        <div className="relative z-10 w-full max-w-md flex flex-col items-center animate-in fade-in zoom-in duration-700 mt-20">
+            
+            {/* Center Logo with Glow */}
+            <div className="mb-8 text-center flex flex-col items-center relative">
+                <div className="absolute inset-0 bg-gulf-orange/40 blur-[60px] rounded-full scale-150 animate-pulse"></div>
+                <div className="flex items-center justify-center gap-6 mb-6 relative z-10">
+                    <img src="https://i.postimg.cc/vHgBc68D/Logo-GULF.png" alt="Gulf Logo" className="w-32 h-32 object-contain drop-shadow-2xl" />
+                </div>
+                
+                <h2 className="text-3xl font-sports text-white tracking-widest uppercase drop-shadow-md bg-black/40 px-4 py-1 rounded">
+                  Mundial 2026
+                </h2>
             </div>
-          </div>
+
+            {/* Login Card styled like a VIP Ticket/Pass */}
+            <div className="w-full bg-white/95 backdrop-blur-xl rounded-3xl shadow-[0_30px_60px_rgba(0,0,0,0.8)] relative overflow-hidden group border border-white/40">
+                {/* Decorative Ticket Holes */}
+                <div className="absolute -left-3 top-1/2 -translate-y-1/2 w-6 h-6 bg-black/80 rounded-full border border-gray-600"></div>
+                <div className="absolute -right-3 top-1/2 -translate-y-1/2 w-6 h-6 bg-black/80 rounded-full border border-gray-600"></div>
+                
+                <div className="bg-gradient-to-r from-gulf-blue to-[#001540] p-6 text-center border-b-4 border-gulf-orange relative overflow-hidden">
+                    <div className="absolute inset-0 opacity-10 bg-[url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAAIklEQVQIW2NkQAKrVq36zwjjgzjwqFChAoMBJAoSIwIKCgQA8g8X66D6W84AAAAASUVORK5CYII=')]"></div>
+                    <h2 className="text-2xl text-white font-sports tracking-wide flex items-center justify-center gap-2 relative z-10">
+                      <Users size={24} className="text-gulf-orange"/> ACCESO JUGADORES
+                    </h2>
+                    <p className="text-gulf-sky text-[10px] uppercase tracking-[0.3em] mt-1">Zona Exclusiva</p>
+                </div>
+
+                <div className="p-8 pt-6">
+                  <form onSubmit={handleLogin} className="space-y-5">
+                      <div className="space-y-1.5">
+                          <label className="text-gulf-blue text-[10px] font-bold uppercase tracking-widest ml-1">ID de Equipo</label>
+                          <div className="relative group">
+                              <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-gulf-orange transition-colors">
+                                  <CircleDot className="w-5 h-5" />
+                              </div>
+                              <input 
+                                  type="text"
+                                  required
+                                  placeholder="Ingresa tu ID"
+                                  className="w-full pl-12 pr-4 py-3.5 bg-gray-50 border-2 border-gray-200 rounded-xl focus:border-gulf-orange focus:ring-0 outline-none transition-all text-gray-800 font-bold tracking-wide"
+                                  value={loginId}
+                                  onChange={(e) => setLoginId(e.target.value)}
+                              />
+                          </div>
+                      </div>
+
+                      <div className="space-y-1.5">
+                          <label className="text-gulf-blue text-[10px] font-bold uppercase tracking-widest ml-1">Contraseña</label>
+                          <div className="relative group">
+                              <Settings className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5 group-focus-within:text-gulf-orange transition-colors" />
+                              <input 
+                                  type="password"
+                                  required
+                                  placeholder="••••••••"
+                                  className="w-full pl-12 pr-4 py-3.5 bg-gray-50 border-2 border-gray-200 rounded-xl focus:border-gulf-orange focus:ring-0 outline-none transition-all text-gray-800 font-bold tracking-wide"
+                                  value={loginPass}
+                                  onChange={(e) => setLoginPass(e.target.value)}
+                              />
+                          </div>
+                      </div>
+
+                      <button 
+                          type="submit" 
+                          className="w-full mt-6 bg-gradient-to-r from-gulf-orange to-orange-600 hover:from-orange-500 hover:to-orange-500 text-white font-sports text-2xl pt-2 pb-1 rounded-xl shadow-lg transition-all transform hover:scale-[1.02] active:scale-95 border-b-4 border-[#c25a1a] active:border-b-0 active:translate-y-1 relative overflow-hidden"
+                      >
+                          <div className="absolute inset-0 bg-white/20 translate-y-full hover:translate-y-0 transition-transform duration-300"></div>
+                          <span className="flex items-center justify-center gap-2 relative z-10">
+                             ENTRAR AL CAMPO
+                          </span>
+                      </button>
+                  </form>
+                </div>
+            </div>
+            
+            <div className="mt-6 text-center">
+                 <button onClick={() => setView('admin')} className="text-[10px] text-white/70 hover:text-white transition-colors uppercase tracking-widest font-bold bg-black/40 px-4 py-1 rounded-full border border-white/10 hover:bg-black/60">
+                    Mesa Técnica (Admin)
+                 </button>
+            </div>
         </div>
       </div>
     );
@@ -286,31 +1013,204 @@ const App = () => {
     );
   }
 
+  if (view === 'profile' && currentUser) {
+    return (
+      <div className="min-h-screen bg-gulf-blue flex flex-col relative overflow-hidden text-white font-body">
+        <Header />
+        <StadiumAtmosphere />
+        <HiddenJerseyCard ref={exportRef} name={currentUser.pointOfSale} />
+        
+        <div className="container mx-auto px-4 py-8 relative z-10 flex flex-col lg:flex-row gap-12 items-center lg:items-start justify-center flex-grow">
+          
+          <div className="flex flex-col items-center w-full lg:w-auto">
+             {/* Name Plate */}
+             <div className="bg-white/10 backdrop-blur-md border border-gulf-sky/30 rounded-lg px-8 py-4 mb-8 text-center shadow-2xl relative overflow-hidden">
+                <div className="absolute top-0 left-0 w-1 h-full bg-gulf-orange"></div>
+                <div className="absolute top-0 right-0 w-1 h-full bg-gulf-orange"></div>
+                <p className="text-gulf-sky text-xs font-bold uppercase tracking-[0.3em] mb-1">Ficha Técnica</p>
+                <h2 className="text-3xl md:text-4xl font-sports tracking-wider text-white uppercase leading-none">
+                  {currentUser.pointOfSale}
+                </h2>
+                <div className="inline-block bg-gulf-orange text-white px-3 py-0.5 rounded text-sm font-bold mt-2 uppercase shadow-sm">
+                   Jugador {currentUser.type}
+                </div>
+             </div>
+
+             {/* Locker Room Visual */}
+             <div className="relative w-full max-w-sm bg-gray-800 rounded-t-3xl border-8 border-gray-700 shadow-2xl overflow-hidden p-6 flex flex-col items-center min-h-[400px]">
+                {/* Bench */}
+                <div className="absolute bottom-0 left-0 right-0 h-16 bg-[#3a2e2a] border-t-4 border-[#2a211e]"></div>
+                
+                {/* Jersey Hanging */}
+                <div className="relative z-10 transform hover:scale-105 transition-transform cursor-pointer">
+                   {/* Hanger */}
+                   <div className="w-32 h-2 border-t-4 border-gray-400 rounded-t-full mx-auto mb-1"></div>
+                   
+                   {/* Jersey Body */}
+                   <div className="w-48 h-56 bg-white rounded-t-3xl rounded-b-xl relative overflow-hidden shadow-lg flex flex-col items-center pt-8">
+                       {/* Collar */}
+                       <div className="absolute top-0 w-24 h-6 border-b-4 border-gulf-blue rounded-b-full"></div>
+                       {/* Stripes */}
+                       <div className="w-full h-full flex">
+                          <div className="w-1/4 bg-gulf-blue h-full"></div>
+                          <div className="w-1/4 bg-white h-full"></div>
+                          <div className="w-1/4 bg-gulf-blue h-full"></div>
+                          <div className="w-1/4 bg-white h-full"></div>
+                       </div>
+                       {/* Back Jersey Info (Number & Name) */}
+                       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-center w-full">
+                          <div className="bg-black/20 backdrop-blur-[1px] mb-1 mx-2 rounded">
+                            <p className="text-[10px] font-sports text-gulf-orange uppercase truncate px-1">
+                                {currentUser.pointOfSale}
+                            </p>
+                          </div>
+                          <div className="text-6xl font-sports text-gulf-orange drop-shadow-md stroke-black" style={{WebkitTextStroke: '1px black'}}>
+                             10
+                          </div>
+                       </div>
+                       
+                       {/* Gulf Logo */}
+                       <div className="absolute bottom-4 bg-white px-2 py-1 rounded">
+                          <span className="text-gulf-blue font-bold text-xs">GULF</span>
+                       </div>
+                   </div>
+                </div>
+
+                <div className="absolute bottom-4 z-20 text-center w-full">
+                    <button 
+                      onClick={handleDownloadJersey} 
+                      disabled={downloading}
+                      className="group relative inline-flex items-center gap-2 bg-gulf-orange hover:bg-orange-600 text-white font-sports tracking-wide text-lg px-6 py-2 rounded-full shadow-lg border-b-4 border-[#c25a1a] active:translate-y-1 active:border-b-0 transition-all"
+                    >
+                        {downloading ? (
+                          <span className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></span>
+                        ) : (
+                          <Download size={18} className="group-hover:animate-bounce" />
+                        )}
+                        <span>{downloading ? 'GENERANDO...' : 'DESCARGAR UNIFORME'}</span>
+                    </button>
+                    <p className="text-[10px] text-white/50 uppercase mt-2">Formato Oficial 1080x1080</p>
+                </div>
+             </div>
+          </div>
+          
+          <div className="flex flex-col gap-6 w-full max-w-md">
+             <div className="bg-black/40 backdrop-blur-md border border-gulf-sky/20 rounded-xl p-6 shadow-2xl relative overflow-hidden">
+                <SoccerBallPattern className="absolute top-0 right-0 text-white/5 w-32 h-32" />
+                
+                <h3 className="text-2xl font-sports text-gulf-orange mb-6 flex items-center border-b border-white/10 pb-2">
+                   <ClipboardList className="mr-2" /> ESTADÍSTICAS DE TEMPORADA
+                </h3>
+                
+                <div className="grid grid-cols-2 gap-4">
+                   <div className="bg-gulf-blue/50 p-4 rounded-lg border border-white/10 text-center">
+                      <p className="text-gulf-sky text-[10px] uppercase tracking-widest font-bold mb-1">Puntos en Juego</p>
+                      <p className="text-4xl font-sports text-white">{currentPoints.toLocaleString()}</p>
+                   </div>
+                   
+                   <div className="bg-gulf-blue/50 p-4 rounded-lg border border-white/10 text-center">
+                      <p className="text-gulf-sky text-[10px] uppercase tracking-widest font-bold mb-1">Trofeos (Canjes)</p>
+                      <div className="flex items-center justify-center gap-1 text-yellow-400">
+                         <Trophy size={20} />
+                         <span className="text-4xl font-sports text-white">{redemptionHistory.length}</span>
+                      </div>
+                   </div>
+                </div>
+
+                <div className="mt-8">
+                  <h4 className="text-sm font-bold text-white mb-3 uppercase tracking-wider flex items-center">
+                    <Activity size={14} className="mr-2 text-green-400" /> Historial de Partidos
+                  </h4>
+                  {redemptionHistory.length > 0 ? (
+                      <ul className="space-y-2">
+                         {redemptionHistory.slice(0, 3).map((item, idx) => (
+                            <li key={idx} className="flex items-center justify-between text-sm bg-white/5 p-3 rounded border-l-4 border-green-500">
+                               <span className="text-gray-200 truncate">{item.name}</span>
+                               <span className="text-green-400 font-mono font-bold">-{item.appliedPrice}</span>
+                            </li>
+                         ))}
+                      </ul>
+                  ) : (
+                      <p className="text-gray-500 text-sm italic">Aún no has saltado al campo. ¡Ve a la tienda!</p>
+                  )}
+                </div>
+             </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (view === 'store' && currentUser) {
     const rewards = getDatabase().rewards;
     
     return (
-      <div className="min-h-screen bg-gray-100 flex flex-col">
+      <div className="min-h-screen bg-gray-50 flex flex-col font-body">
         <Header />
         
-        {/* Dashboard Banner */}
-        <div className="bg-gradient-to-r from-gulf-blue to-blue-800 text-white py-12 px-4 relative overflow-hidden">
-           <div className="absolute right-0 top-0 h-full w-1/3 opacity-10 transform skew-x-12 bg-white"></div>
-           <div className="container mx-auto relative z-10">
-             <h2 className="text-5xl font-sports mb-2">HOLA, <span className="text-gulf-orange">{currentUser.pointOfSale.toUpperCase()}</span></h2>
-             <p className="text-xl opacity-90 mb-6">Tu categoría actual es: <span className="font-bold bg-white text-gulf-blue px-2 py-0.5 rounded text-sm uppercase">{currentUser.type}</span></p>
-             <div className="inline-block bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-4 pr-8">
-                <p className="text-sm uppercase tracking-widest opacity-70">Saldo Disponible</p>
-                <p className="text-6xl font-sports text-white leading-none">{currentPoints.toLocaleString()}</p>
-             </div>
+        {/* Match Center Hero Section */}
+        <div className="bg-[#00205B] relative overflow-hidden text-white shadow-2xl border-b-4 border-white">
+           <StadiumAtmosphere />
+           
+           <div className="container mx-auto px-4 py-8 relative z-10">
+              <div className="flex flex-col md:flex-row justify-between items-center gap-8">
+                 <div className="text-center md:text-left">
+                    <div className="inline-flex items-center gap-2 mb-2 bg-red-600 px-2 py-0.5 rounded animate-pulse">
+                       <span className="w-2 h-2 bg-white rounded-full"></span>
+                       <span className="text-white text-[10px] font-bold uppercase tracking-wider">En Vivo</span>
+                    </div>
+                    <h2 className="text-5xl md:text-6xl font-sports leading-none mb-1 drop-shadow-lg">
+                       CENTRO DE <span className="text-gulf-sky italic">PREMIOS</span>
+                    </h2>
+                    <p className="text-gray-300 text-sm max-w-lg flex items-center gap-2">
+                       <MapPin size={14} className="text-gulf-orange" /> Estadio Oficial Prolub Gulf 2026
+                    </p>
+                 </div>
+                 
+                 {/* Giant Scoreboard */}
+                 <div className="bg-black border-4 border-gray-600 rounded-xl p-4 flex items-center gap-4 min-w-[320px] shadow-[0_0_20px_rgba(0,0,0,0.8)] relative transform rotate-1">
+                    {/* Gloss */}
+                    <div className="absolute top-0 left-0 w-full h-1/2 bg-white/5 rounded-t-lg pointer-events-none"></div>
+                    
+                    <div className="flex-1 text-center border-r border-gray-700 pr-4">
+                        <div className="w-12 h-12 bg-white rounded-full mx-auto mb-1 flex items-center justify-center border-2 border-gulf-blue">
+                           <img src="https://i.postimg.cc/vHgBc68D/Logo-GULF.png" alt="Gulf" className="w-8" />
+                        </div>
+                        <p className="text-[10px] text-gray-400 font-mono">{currentUser.type}</p>
+                    </div>
+                    
+                    <div className="text-center">
+                       <div className="font-mono text-5xl text-yellow-500 font-bold tracking-widest leading-none" style={{textShadow: '0 0 10px rgba(234,179,8,0.5)'}}>
+                          {currentPoints}
+                       </div>
+                       <p className="text-[10px] text-red-500 font-bold uppercase tracking-[0.3em] mt-1 bg-black inline-block px-1">Puntos</p>
+                    </div>
+                 </div>
+              </div>
            </div>
         </div>
 
         {/* Catalog */}
         <main className="container mx-auto px-4 py-8 flex-grow">
-          <h3 className="text-3xl font-sports text-gulf-blue mb-6 border-l-4 border-gulf-orange pl-3">PREMIOS TITULARES</h3>
+          {/* Decorative Field Lines on Background */}
+          <div className="fixed inset-0 pointer-events-none z-0 opacity-[0.02]" style={{
+              backgroundImage: 'linear-gradient(to right, #000 1px, transparent 1px), linear-gradient(to bottom, #000 1px, transparent 1px)',
+              backgroundSize: '100px 100px'
+          }}></div>
+
+          <GamifiedProgressBar currentPoints={currentPoints} />
+
+          <div className="flex items-center gap-3 mb-8 relative z-10">
+             <div className="bg-gulf-blue text-white p-2 rounded-lg shadow-md">
+                <Medal size={24} />
+             </div>
+             <div>
+                <h3 className="text-3xl font-sports text-gulf-blue leading-none">MERCADO DE FICHAJES</h3>
+                <p className="text-xs text-gulf-orange font-bold uppercase tracking-wide">Refuerza tu equipo con los mejores premios</p>
+             </div>
+          </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 relative z-10">
             {rewards.map(reward => (
               <RewardCard 
                 key={reward.id} 
@@ -322,93 +1222,173 @@ const App = () => {
             ))}
           </div>
         </main>
+        
+        {/* Footer */}
+        <footer className="bg-gulf-blue text-white py-12 mt-12 border-t-8 border-white relative overflow-hidden">
+           <SoccerBallPattern className="absolute right-[-50px] bottom-[-50px] text-white/5 w-64 h-64" />
+           <div className="container mx-auto text-center relative z-10">
+              <div className="flex justify-center items-center gap-6 mb-6">
+                  {/* Prolub Logo */}
+                  <div className="bg-white p-3 rounded-lg shadow-lg transform -rotate-3 hover:rotate-0 transition-transform duration-300">
+                      <img src="https://i.postimg.cc/25m8ccQr/Prolub-LOGO.png" alt="Prolub" className="h-12 object-contain" />
+                  </div>
+                  
+                  {/* Divider */}
+                  <div className="h-8 w-px bg-white/20"></div>
+
+                  {/* Gulf Logo */}
+                  <div className="bg-white p-3 rounded-lg shadow-lg transform rotate-3 hover:rotate-0 transition-transform duration-300">
+                      <img src="https://i.postimg.cc/vHgBc68D/Logo-GULF.png" alt="Gulf" className="h-12 object-contain" />
+                  </div>
+              </div>
+              
+              <p className="text-3xl font-sports tracking-widest">PROLUB GULF 2026</p>
+              <p className="text-xs text-gulf-sky uppercase tracking-[0.3em] mt-2 font-bold">Patrocinador Oficial de tus Victorias</p>
+           </div>
+        </footer>
       </div>
     );
   }
 
   if (view === 'checkout') {
     return (
-      <div className="min-h-screen bg-gray-50 flex flex-col">
+      <div className="min-h-screen bg-[#F5F9FC] flex flex-col relative">
+        {loading && <LoadingScreen />}
         <Header />
-        <main className="container mx-auto px-4 py-8 max-w-4xl">
-           <button onClick={() => setView('store')} className="mb-6 text-gulf-blue hover:underline flex items-center">
-             ← Volver al Catálogo
+        <main className="container mx-auto px-4 py-8 max-w-5xl">
+           <button onClick={() => setView('store')} className="mb-6 bg-white px-4 py-2 rounded-full shadow-sm text-gulf-blue hover:text-gulf-orange transition-colors flex items-center font-bold text-sm">
+             <ChevronRight className="rotate-180 mr-1" size={16} /> Volver al Mercado
            </button>
            
-           <div className="bg-white rounded-xl shadow-lg overflow-hidden flex flex-col md:flex-row">
-              {/* Order Summary */}
-              <div className="bg-gray-800 text-white p-8 md:w-1/3">
-                 <h3 className="text-2xl font-sports mb-6 text-gulf-orange">TU SELECCIÓN</h3>
-                 <div className="space-y-4 max-h-96 overflow-y-auto pr-2">
-                   {cart.map((item, idx) => (
-                     <div key={idx} className="flex justify-between items-start border-b border-gray-700 pb-2">
-                        <div>
-                           <p className="font-bold text-sm">{item.name}</p>
-                           <p className="text-xs text-gray-400">Cant: {item.quantity}</p>
+           <div className="flex items-center gap-4 mb-8">
+              <div className="w-16 h-16 bg-white rounded-full border-4 border-gulf-blue flex items-center justify-center shadow-lg">
+                 <Trophy className="text-gulf-orange" size={32} />
+              </div>
+              <div>
+                  <h2 className="text-4xl font-sports text-gulf-blue uppercase leading-none">CONFIRMAR JUGADA</h2>
+                  <p className="text-gray-500 text-sm">Asegura tu victoria completando los datos.</p>
+              </div>
+           </div>
+
+           <div className="flex flex-col lg:flex-row gap-8">
+              {/* Lineup Card */}
+              <div className="lg:w-1/3 space-y-4">
+                 <div className="bg-gradient-to-b from-gulf-blue to-black text-white p-6 rounded-xl shadow-2xl border-t-4 border-gulf-orange relative overflow-hidden">
+                    <SoccerBallPattern className="absolute top-0 right-0 w-32 h-32 text-white/5" />
+                    
+                    <h3 className="text-xl font-sports mb-4 text-gulf-sky flex items-center relative z-10 border-b border-white/20 pb-2">
+                       <ClipboardList className="mr-2" size={18} /> TU ALINEACIÓN
+                    </h3>
+                    <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar relative z-10">
+                      {cart.map((item, idx) => (
+                        <div key={idx} className="bg-white/10 p-3 rounded flex items-center space-x-3 border border-white/5 hover:bg-white/20 transition-colors">
+                           <div className="w-10 h-10 bg-white rounded overflow-hidden flex-shrink-0 p-1">
+                             <img src={item.imageUrl} alt={item.name} className="w-full h-full object-contain" />
+                           </div>
+                           <div className="flex-grow min-w-0">
+                              <p className="font-bold text-xs truncate uppercase">{item.name}</p>
+                              <div className="flex justify-between items-center text-xs text-gulf-sky mt-1">
+                                 <span className="bg-gulf-orange px-1.5 rounded text-[10px] text-black font-bold">x{item.quantity}</span>
+                                 <button onClick={() => removeFromCart(item.id)} className="text-red-400 hover:text-white transition-colors">
+                                    <X size={14} />
+                                 </button>
+                              </div>
+                           </div>
+                           <div className="text-right flex-shrink-0">
+                             <p className="font-mono text-lg leading-none">{(item.appliedPrice * item.quantity).toLocaleString()}</p>
+                           </div>
                         </div>
-                        <div className="text-right">
-                          <p className="font-mono text-gulf-lightblue">{(item.appliedPrice * item.quantity).toLocaleString()}</p>
-                          <button onClick={() => removeFromCart(item.id)} className="text-xs text-red-400 hover:text-red-300">Eliminar</button>
-                        </div>
-                     </div>
-                   ))}
-                 </div>
-                 <div className="mt-8 pt-4 border-t border-gray-600">
-                    <div className="flex justify-between text-xl font-bold">
-                       <span>Total</span>
-                       <span>{calculateTotal().toLocaleString()} pts</span>
+                      ))}
                     </div>
-                    <p className="text-xs text-right mt-1 text-gray-400">Saldo restante: {(currentPoints - calculateTotal()).toLocaleString()} pts</p>
+                    <div className="mt-6 pt-4 border-t-2 border-dashed border-white/20 relative z-10">
+                       <div className="flex justify-between items-end">
+                          <span className="text-xs opacity-80 uppercase font-bold tracking-wider">Total Puntos</span>
+                          <span className="text-4xl font-sports text-yellow-400 leading-none">{calculateTotal().toLocaleString()}</span>
+                       </div>
+                    </div>
                  </div>
               </div>
 
-              {/* Checkout Form */}
-              <div className="p-8 md:w-2/3">
-                 <h3 className="text-2xl font-sports text-gulf-blue mb-6 flex items-center">
-                   <Truck className="mr-2" /> DATOS DE ENVÍO
-                 </h3>
-                 <form onSubmit={handleCheckout} className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                       <div>
-                          <label className="block text-sm font-bold text-gray-700 mb-1">Recibe (Nombre)</label>
-                          <div className="relative">
-                            <User className="absolute left-3 top-3 text-gray-400" size={16}/>
-                            <input required type="text" className="w-full pl-9 border p-2 rounded focus:ring-1 focus:ring-gulf-orange outline-none" 
-                                   value={orderDetails.receiver} onChange={e => setOrderDetails({...orderDetails, receiver: e.target.value})} />
-                          </div>
-                       </div>
-                       <div>
-                          <label className="block text-sm font-bold text-gray-700 mb-1">Teléfono</label>
-                          <div className="relative">
-                            <Phone className="absolute left-3 top-3 text-gray-400" size={16}/>
-                            <input required type="tel" className="w-full pl-9 border p-2 rounded focus:ring-1 focus:ring-gulf-orange outline-none"
-                                   value={orderDetails.phone} onChange={e => setOrderDetails({...orderDetails, phone: e.target.value})} />
-                          </div>
-                       </div>
-                    </div>
-                    <div>
-                       <label className="block text-sm font-bold text-gray-700 mb-1">Dirección Completa</label>
-                       <div className="relative">
-                         <MapPin className="absolute left-3 top-3 text-gray-400" size={16}/>
-                         <input required type="text" className="w-full pl-9 border p-2 rounded focus:ring-1 focus:ring-gulf-orange outline-none"
-                                value={orderDetails.address} onChange={e => setOrderDetails({...orderDetails, address: e.target.value})} />
-                       </div>
-                    </div>
-                    <div>
-                       <label className="block text-sm font-bold text-gray-700 mb-1">Ciudad / Municipio</label>
-                       <div className="relative">
-                         <Flag className="absolute left-3 top-3 text-gray-400" size={16}/>
-                         <input required type="text" className="w-full pl-9 border p-2 rounded focus:ring-1 focus:ring-gulf-orange outline-none"
-                                value={orderDetails.city} onChange={e => setOrderDetails({...orderDetails, city: e.target.value})} />
-                       </div>
-                    </div>
-                    
-                    <div className="pt-6">
-                       <button type="submit" disabled={loading} className="w-full bg-gulf-orange hover:bg-orange-600 text-white font-bold py-4 rounded-lg shadow-lg transition-all flex justify-center items-center text-lg">
-                          {loading ? 'Procesando...' : `CONFIRMAR CANJE POR ${calculateTotal().toLocaleString()} PTS`}
-                       </button>
-                    </div>
-                 </form>
+              {/* Tactics Board (Form) */}
+              <div className="lg:w-2/3">
+                 <div className="bg-white p-8 rounded-xl shadow-lg border border-gray-200 relative">
+                     {/* Chalkboard look header */}
+                     <div className="bg-green-700 text-white -mx-8 -mt-8 px-8 py-4 rounded-t-xl mb-6 flex items-center shadow-inner">
+                        <Truck className="mr-3" />
+                        <h3 className="text-2xl font-sports uppercase tracking-wide">Logística de Envío</h3>
+                     </div>
+                     
+                     <form onSubmit={handleCheckout} className="space-y-6">
+                        <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 flex items-center justify-between">
+                           <div>
+                              <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider">Equipo (Usuario)</label>
+                              <span className="font-mono font-bold text-lg text-gulf-blue">{currentUser?.businessId}</span>
+                           </div>
+                           <div className="bg-gulf-blue text-white px-2 py-1 rounded text-xs font-bold">VERIFICADO</div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                           <div className="space-y-1">
+                              <label className="text-xs font-bold text-gulf-blue uppercase">Nombre del Receptor</label>
+                              <input 
+                                required 
+                                type="text" 
+                                placeholder="Capitán que recibe"
+                                className="w-full px-4 py-3 bg-white border-2 border-gray-100 rounded-lg focus:border-gulf-blue focus:ring-0 outline-none transition-all" 
+                                value={orderDetails.receiver} 
+                                onChange={e => setOrderDetails({...orderDetails, receiver: e.target.value})} 
+                              />
+                           </div>
+                           
+                           <div className="space-y-1">
+                              <label className="text-xs font-bold text-gulf-blue uppercase">Teléfono / Móvil</label>
+                              <input 
+                                required 
+                                type="tel" 
+                                placeholder="Contacto directo"
+                                className="w-full px-4 py-3 bg-white border-2 border-gray-100 rounded-lg focus:border-gulf-blue focus:ring-0 outline-none transition-all"
+                                value={orderDetails.phone} 
+                                onChange={e => setOrderDetails({...orderDetails, phone: e.target.value})} 
+                              />
+                           </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="space-y-1">
+                               <label className="text-xs font-bold text-gulf-blue uppercase">Ciudad Sede</label>
+                               <input 
+                                 required 
+                                 type="text" 
+                                 placeholder="Ciudad de destino"
+                                 className="w-full px-4 py-3 bg-white border-2 border-gray-100 rounded-lg focus:border-gulf-blue focus:ring-0 outline-none transition-all"
+                                 value={orderDetails.city} 
+                                 onChange={e => setOrderDetails({...orderDetails, city: e.target.value})} 
+                               />
+                            </div>
+                            <div className="space-y-1">
+                               <label className="text-xs font-bold text-gulf-blue uppercase">Dirección del Estadio</label>
+                               <input 
+                                 required 
+                                 type="text" 
+                                 placeholder="Dirección exacta"
+                                 className="w-full px-4 py-3 bg-white border-2 border-gray-100 rounded-lg focus:border-gulf-blue focus:ring-0 outline-none transition-all"
+                                 value={orderDetails.address} 
+                                 onChange={e => setOrderDetails({...orderDetails, address: e.target.value})} 
+                               />
+                            </div>
+                        </div>
+                        
+                        <div className="pt-6 mt-4 border-t border-gray-100">
+                           <button 
+                             type="submit" 
+                             disabled={loading} 
+                             className="w-full bg-gulf-orange hover:bg-orange-600 text-white font-sports text-3xl py-4 rounded-xl shadow-lg transition-all transform hover:-translate-y-1 active:scale-95 border-b-4 border-[#c25a1a]"
+                           >
+                              {loading ? 'PATEANDO...' : '¡GOL! CONFIRMAR CANJE'}
+                           </button>
+                        </div>
+                     </form>
+                 </div>
               </div>
            </div>
         </main>
@@ -418,31 +1398,72 @@ const App = () => {
 
   if (view === 'success') {
     return (
-      <div className="min-h-screen bg-gulf-blue flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-lg text-center animate-pulse-slow">
-           <div className="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-              <CheckCircle className="text-green-500 w-12 h-12" />
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gulf-blue/95 backdrop-blur-md overflow-hidden">
+        <CelebrationEffect />
+        <StadiumAtmosphere />
+        
+        <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden relative transform transition-all animate-in zoom-in duration-300 border-8 border-white z-20">
+           
+           {/* Animated Header */}
+           <div className="bg-gradient-to-b from-gulf-sky/30 to-white h-64 relative flex items-center justify-center overflow-hidden border-b-4 border-gulf-orange">
+              
+              {/* Goal Post & Net */}
+              <div className="absolute bottom-0 w-64 h-40 border-x-8 border-t-8 border-white rounded-t-xl shadow-[0_10px_20px_rgba(0,0,0,0.2)] z-10 mx-auto">
+                   {/* Net Texture */}
+                   <div className="absolute inset-0 bg-black/10 rounded-t-lg border border-black/5" 
+                        style={{
+                           backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 9px, rgba(255,255,255,0.8) 10px, transparent 11px), repeating-linear-gradient(-45deg, transparent, transparent 9px, rgba(255,255,255,0.8) 10px, transparent 11px)',
+                           animation: 'netShake 0.4s ease-in-out 0.4s forwards'
+                        }}>
+                   </div>
+              </div>
+
+              {/* Ball Animation */}
+              <div className="absolute z-20 animate-[goalScore_0.6s_cubic-bezier(0.175,0.885,0.32,1.275)_forwards]">
+                  <div className="w-16 h-16 bg-white rounded-full border-4 border-black shadow-xl flex items-center justify-center relative overflow-hidden">
+                      <div className="absolute inset-0 opacity-20 bg-black"></div> {/* Shadow */}
+                      <img src="https://upload.wikimedia.org/wikipedia/commons/d/d3/Soccerball.svg" alt="Ball" className="w-full h-full object-cover animate-spin" style={{animationDuration: '3s'}} />
+                  </div>
+              </div>
+
+              <style>{`
+                 @keyframes goalScore {
+                    0% { transform: scale(0.5) translate(-200%, 200%) rotate(-180deg); opacity: 0; }
+                    60% { transform: scale(1.1) translate(0, 0) rotate(0deg); opacity: 1; }
+                    80% { transform: scale(0.95) translate(0, 0); }
+                    100% { transform: scale(1) translate(0, 0); }
+                 }
+                 @keyframes netShake {
+                    0% { transform: scale(1); }
+                    50% { transform: scale(1.05, 0.95); }
+                    75% { transform: scale(0.95, 1.05); }
+                    100% { transform: scale(1); }
+                 }
+              `}</style>
            </div>
-           <h2 className="text-4xl font-sports text-gulf-blue mb-4">¡GOLAZO!</h2>
-           <p className="text-gray-600 text-lg mb-6">
-             Tu canje ha sido registrado exitosamente. Hemos enviado la orden al equipo de logística.
-           </p>
-           <div className="bg-gray-100 p-4 rounded-lg mb-6 text-sm text-left">
-             <p className="font-bold text-gray-700">Se notificó a:</p>
-             <ul className="list-disc list-inside text-gray-600">
-               <li>agallego@gulfcolombia.com</li>
-               <li>asismercadeo@gulfcolombia.com</li>
-             </ul>
+
+           <div className="p-8 text-center relative z-20">
+              <h2 className="text-7xl font-sports text-gulf-blue mb-0 leading-none tracking-wide drop-shadow-sm animate-pulse">¡GOLAZO!</h2>
+              <div className="bg-gulf-orange text-white text-xl font-bold uppercase tracking-widest py-1 px-4 rounded-full inline-block mb-6 shadow-md transform -skew-x-12">
+                 PREMIO CANJEADO
+              </div>
+              
+              <p className="text-gray-500 mb-8 text-sm leading-relaxed font-medium">
+                La jugada ha sido perfecta. <br/>
+                Tu premio ya está en camino a la zona de anotación.
+              </p>
+              
+              <button onClick={() => setView('profile')} className="w-full bg-gulf-blue hover:bg-blue-900 text-white font-sports text-2xl py-4 rounded-xl shadow-xl border-b-4 border-black/20 active:border-b-0 active:translate-y-1 transition-all flex items-center justify-center gap-2 group">
+                <Trophy size={24} className="group-hover:text-yellow-400 transition-colors" />
+                VOLVER AL CAMERINO
+              </button>
            </div>
-           <button onClick={() => setView('store')} className="bg-gulf-orange text-white px-8 py-3 rounded-full font-bold hover:bg-orange-600 transition-colors">
-             Volver a la Tienda
-           </button>
         </div>
       </div>
     );
   }
 
-  return <div>Loading...</div>;
+  return <LoadingScreen />;
 };
 
 export default App;
