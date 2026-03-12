@@ -34,7 +34,7 @@ export const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => 
         const TEMPLATE_ID = 'template_rrqgdym';
         const PUBLIC_KEY = 'pfbP31YCRZ3dzBat5';
         
-        const adminEmails = "asismercadeo@gulfcolombia.com,agallego@gulfcolombia.com";
+        const adminEmails = "asismercadeo@gulfcolombia.com,trademarketing@prolub.com.co";
 
         emailjs.init(PUBLIC_KEY);
 
