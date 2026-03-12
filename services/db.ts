@@ -1,6 +1,6 @@
 import { Client, ClientPoints, Reward, Database, ClientType, OrderLog } from '../types';
 
-const DB_KEY = 'gulf_prolub_db_v11'; // Incremented to v7 to add new rewards
+const DB_KEY = 'gulf_prolub_db_v12'; // Incremented to v7 to add new rewards
 const DEFAULT_POINTS = 0; 
 
 const RAW_CLIENTS_CSV = `Tipo de cliente;Id;Punto de venta;Contraseña
@@ -693,19 +693,6 @@ const INITIAL_DATA: Database = {
     "category": "Hogar",
     "popularity": 50,
     "dateAdded": "2024-01-04"
-  },
-  {
-    "id": "rw_005",
-    "name": "Mini parrilla eléctrica",
-    "description": "Cuando el partido se alarga, la parrilla también entra en la cancha.\nPerfecta para tiempos extra, reuniones y celebraciones.",
-    "pointsPareto": 89,
-    "pointsNormal": 44,
-    "imageUrls": [
-      "https://placehold.co/600x400/F37121/FFFFFF?text=Parrilla+Electrica"
-    ],
-    "category": "Hogar",
-    "popularity": 60,
-    "dateAdded": "2024-01-05"
   },
   {
     "id": "rw_006",
