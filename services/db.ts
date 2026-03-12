@@ -1,6 +1,6 @@
 import { Client, ClientPoints, Reward, Database, ClientType, OrderLog } from '../types';
 
-const DB_KEY = 'gulf_prolub_db_v12'; // Incremented to v7 to add new rewards
+const DB_KEY = 'gulf_prolub_db_v13'; // Incremented to v7 to add new rewards
 const DEFAULT_POINTS = 0; 
 
 const RAW_CLIENTS_CSV = `Tipo de cliente;Id;Punto de venta;Contraseña
@@ -284,7 +284,7 @@ Pareto;3456;VARGAS SALAMANCA LUIS ANGEL;927
 Pareto;9790;MARTEXA C I S A S;920
 Pareto;7561;DACAR FILTROS S.A.S.;978
 Pareto;6931;INVERSIONES BOGOTA MOTORS SAS;876
-Pareto;9731;IBAÑEZ ALFONSO EFRAIN;821`;
+Pareto;9731;IBAÑEZ ALFONSO EFRAIN;821\nNormal;0527;PRUEBA JUAN;000`;
 
 const RAW_POINTS_CSV = `Punto de venta;Puntos disponibles
 COLMENARES CELY MARIA DE JESUS;207
@@ -567,7 +567,7 @@ VARGAS SALAMANCA LUIS ANGEL;0
 MARTEXA C I S A S;0
 DACAR FILTROS S.A.S.;114
 INVERSIONES BOGOTA MOTORS SAS;275
-IBA EZ ALFONSO EFRAIN;0`;
+IBA EZ ALFONSO EFRAIN;0\nPRUEBA JUAN;1500`;
 
 // Función para normalizar claves de búsqueda
 const normalizeKey = (str: string) => {
