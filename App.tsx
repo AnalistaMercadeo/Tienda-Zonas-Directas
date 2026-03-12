@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ShoppingCart, User, LogOut, CheckCircle, Trophy, Flag, MapPin, Truck, Phone, Package, Menu, X, Settings, Hash, CircleDot, ClipboardList, Building2, Shirt, Medal, Sparkles, Gauge, Calendar, Activity, ChevronRight, Speaker, Users, Download, Share2 } from 'lucide-react';
-import { Client, Reward, OrderDetails, CartItem } from './types';
-import { getDatabase, getPoints, deductPoints } from './services/db';
+import { ShoppingCart, User, LogOut, CheckCircle, Trophy, Flag, MapPin, Truck, Phone, Package, Menu, X, Settings, Hash, CircleDot, ClipboardList, Building2, Shirt, Medal, Sparkles, Gauge, Calendar, Activity, ChevronRight, Speaker, Users, Download, Share2, ZoomIn, ArrowLeft, ArrowRight, FileText, Filter, ArrowDownUp } from 'lucide-react';
+import { Client, Reward, OrderDetails, CartItem, OrderLog } from './types';
+import { getDatabase, getPoints, deductPoints, addOrder } from './services/db';
+import { sendOrderToGoogleSheet } from './services/googleSheets';
 import { AdminPanel } from './components/AdminPanel';
 import html2canvas from 'html2canvas';
+import { jsPDF } from "jspdf";
 import emailjs from '@emailjs/browser';
 
 type ViewState = 'login' | 'store' | 'checkout' | 'success' | 'admin' | 'profile';
@@ -13,6 +15,16 @@ interface RewardCardProps {
   currentUser: Client;
   currentPoints: number;
   onAddToCart: (reward: Reward, qty: number) => void;
+  onViewDetails: (reward: Reward) => void;
+}
+
+interface ProductModalProps {
+    reward: Reward | null;
+    currentUser: Client | null;
+    currentPoints: number;
+    isOpen: boolean;
+    onClose: () => void;
+    onAddToCart: (reward: Reward, qty: number) => void;
 }
 
 // --- Visual Components ---
@@ -66,6 +78,304 @@ const SoccerBallPattern = ({ className }: { className?: string }) => (
         <rect x="0" y="0" width="100%" height="100%" fill="url(#soccer-ball)" />
     </svg>
 );
+
+// --- Invoice Template Component (Hidden until download) ---
+const InvoiceTemplate = React.forwardRef<HTMLDivElement, { 
+    currentUser: Client | null, 
+    cart: CartItem[], 
+    orderDetails: OrderDetails,
+    date: string,
+    totalPoints: number
+}>(({ currentUser, cart, orderDetails, date, totalPoints }, ref) => {
+    if (!currentUser) return null;
+
+    return (
+        <div ref={ref} className="w-[800px] bg-white p-0 relative overflow-hidden font-body text-gray-800 shadow-none" style={{ minHeight: '1100px' }}>
+            {/* Watermark Background */}
+            <div className="absolute inset-0 opacity-[0.03] z-0 pointer-events-none">
+                <img src="https://upload.wikimedia.org/wikipedia/commons/d/d3/Soccerball.svg" alt="Pattern" className="w-full h-full object-cover opacity-20" />
+            </div>
+            
+            {/* Header Strip */}
+            <div className="bg-gradient-to-r from-gulf-blue to-[#001030] h-4 w-full"></div>
+            
+            {/* Brand Header */}
+            <div className="px-12 py-8 flex justify-between items-center border-b-2 border-gulf-orange relative z-10">
+                <div className="flex items-center gap-6">
+                    <img src="https://i.postimg.cc/vHgBc68D/Logo-GULF.png" alt="Gulf" className="h-16 object-contain" />
+                    <div className="h-12 w-px bg-gray-300"></div>
+                    <img src="https://i.postimg.cc/25m8ccQr/Prolub-LOGO.png" alt="Prolub" className="h-12 object-contain" />
+                </div>
+                <div className="text-right">
+                    <h1 className="text-4xl font-sports text-gulf-blue uppercase tracking-widest leading-none">
+                        COMPROBANTE DE CANJE
+                    </h1>
+                    <p className="text-gulf-orange text-sm font-bold uppercase tracking-[0.3em]">Mundial 2026 Rewards</p>
+                </div>
+            </div>
+
+            <div className="px-12 py-8 relative z-10">
+                {/* Info Grid */}
+                <div className="grid grid-cols-2 gap-12 mb-10">
+                    <div className="bg-gray-50 p-6 rounded-xl border border-gray-200">
+                        <h3 className="text-gulf-blue font-bold uppercase tracking-widest text-sm mb-4 border-b border-gray-200 pb-2 flex items-center gap-2">
+                            <User size={16} /> Datos del Jugador (Cliente)
+                        </h3>
+                        <div className="space-y-2 text-sm">
+                            <div className="flex justify-between">
+                                <span className="text-gray-500">Razón Social:</span>
+                                <span className="font-bold">{currentUser.pointOfSale}</span>
+                            </div>
+                            <div className="flex justify-between">
+                                <span className="text-gray-500">ID Equipo:</span>
+                                <span className="font-mono text-gulf-blue font-bold">{currentUser.businessId}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="bg-gray-50 p-6 rounded-xl border border-gray-200">
+                        <h3 className="text-gulf-blue font-bold uppercase tracking-widest text-sm mb-4 border-b border-gray-200 pb-2 flex items-center gap-2">
+                            <Truck size={16} /> Logística de Envío
+                        </h3>
+                        {/* Adjust Text size and wrapping for address to avoid cutoff */}
+                        <div className="space-y-2 text-xs">
+                            <div className="flex justify-between items-start">
+                                <span className="text-gray-500 shrink-0 mr-2">Receptor:</span>
+                                <span className="font-bold text-right">{orderDetails.receiver}</span>
+                            </div>
+                            <div className="flex justify-between items-start">
+                                <span className="text-gray-500 shrink-0 mr-2">Ciudad:</span>
+                                <span className="text-right">{orderDetails.city}</span>
+                            </div>
+                            <div className="flex justify-between items-start">
+                                <span className="text-gray-500 shrink-0 mr-2">Dirección:</span>
+                                <span className="text-right font-medium break-words w-[60%]">{orderDetails.address}</span>
+                            </div>
+                            <div className="flex justify-between items-start">
+                                <span className="text-gray-500 shrink-0 mr-2">Teléfono:</span>
+                                <span className="font-mono text-right">{orderDetails.phone}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Date Badge */}
+                <div className="flex justify-end mb-4">
+                    <div className="inline-flex items-center gap-2 bg-gulf-sky/20 px-4 py-2 rounded-lg border border-gulf-sky/50 text-gulf-blue">
+                        <Calendar size={16} />
+                        <span className="text-xs font-bold uppercase tracking-wider">Fecha de Emisión:</span>
+                        <span className="font-mono font-bold">{date}</span>
+                    </div>
+                </div>
+
+                {/* Table */}
+                <div className="border border-gray-200 rounded-xl overflow-hidden mb-8 shadow-sm">
+                    <table className="w-full text-sm">
+                        <thead className="bg-gulf-blue text-white uppercase text-xs tracking-wider">
+                            <tr>
+                                <th className="px-6 py-4 text-left font-sports text-lg font-normal tracking-wide">Descripción del Premio</th>
+                                <th className="px-6 py-4 text-center font-sports text-lg font-normal tracking-wide">Cantidad</th>
+                                <th className="px-6 py-4 text-right font-sports text-lg font-normal tracking-wide">Puntos Unit.</th>
+                                <th className="px-6 py-4 text-right font-sports text-lg font-normal tracking-wide">Total</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                            {cart.map((item, idx) => (
+                                <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
+                                    <td className="px-6 py-4 font-medium text-gray-700">{item.name}</td>
+                                    <td className="px-6 py-4 text-center font-mono text-gray-500">{item.quantity}</td>
+                                    <td className="px-6 py-4 text-right font-mono text-gray-500">{item.appliedPrice.toLocaleString()}</td>
+                                    <td className="px-6 py-4 text-right font-bold font-mono text-gulf-blue">{(item.appliedPrice * item.quantity).toLocaleString()}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                        <tfoot className="bg-gray-50 border-t-2 border-gulf-orange">
+                            <tr>
+                                <td colSpan={3} className="px-6 py-4 text-right text-sm font-bold uppercase tracking-widest text-gray-500">Total Puntos Canjeados</td>
+                                <td className="px-6 py-4 text-right text-3xl font-sports text-gulf-orange leading-none">{totalPoints.toLocaleString()}</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+
+                {/* Footer Notes */}
+                <div className="mt-12 border-t border-gray-200 pt-6 text-center">
+                    <p className="text-xs text-gray-400 uppercase tracking-widest mb-2">Este documento es un comprobante oficial de redención de puntos.</p>
+                    <p className="text-xs text-gray-400">Gracias por ser parte del equipo Prolub Gulf. ¡Vamos por más victorias!</p>
+                </div>
+
+                {/* Signature Fake */}
+                <div className="mt-16 flex justify-between px-12">
+                     <div className="text-center">
+                         <div className="w-48 h-px bg-gray-300 mb-2"></div>
+                         <p className="text-[10px] text-gray-400 uppercase">Firma Autorizada Prolub</p>
+                     </div>
+                     <div className="text-center">
+                         <img src="https://i.postimg.cc/vHgBc68D/Logo-GULF.png" alt="Stamp" className="w-24 opacity-20 rotate-12 -mt-10 mx-auto" />
+                     </div>
+                </div>
+            </div>
+            
+            {/* Bottom Color Bar */}
+            <div className="absolute bottom-0 left-0 w-full h-2 flex">
+                <div className="w-1/3 bg-gulf-blue"></div>
+                <div className="w-1/3 bg-gulf-orange"></div>
+                <div className="w-1/3 bg-gulf-sky"></div>
+            </div>
+        </div>
+    );
+});
+
+const StoreBanner = ({ currentUser, currentPoints }: { currentUser: Client, currentPoints: number }) => {
+  return (
+    <div className="relative w-full bg-gradient-to-r from-gulf-blue via-[#00205B] to-black overflow-hidden shadow-2xl border-b-4 border-gulf-orange group">
+      {/* Background Textures */}
+      <StadiumAtmosphere />
+      <div className="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')]"></div>
+      
+      {/* Animated Elements */}
+      <div className="absolute -right-20 top-0 w-96 h-96 bg-gulf-orange/20 blur-[100px] rounded-full animate-pulse"></div>
+      <div className="absolute -left-20 bottom-0 w-64 h-64 bg-gulf-sky/10 blur-[80px] rounded-full"></div>
+
+      {/* Floating Balls */}
+      <img src="https://upload.wikimedia.org/wikipedia/commons/d/d3/Soccerball.svg" alt="" className="absolute top-10 right-[10%] w-32 h-32 opacity-10 animate-[spin_10s_linear_infinite] mix-blend-overlay" />
+      <img src="https://upload.wikimedia.org/wikipedia/commons/d/d3/Soccerball.svg" alt="" className="absolute bottom-4 left-[5%] w-16 h-16 opacity-10 animate-bounce mix-blend-overlay" style={{animationDuration: '3s'}} />
+
+      <div className="container mx-auto px-6 py-10 relative z-10">
+         <div className="flex flex-col md:flex-row justify-between items-center gap-8">
+            
+            {/* Left: Branding & Text */}
+            <div className="text-center md:text-left flex-1">
+               <div className="flex items-center justify-center md:justify-start gap-3 mb-2 animate-in slide-in-from-left duration-700">
+                  <span className="bg-white/10 backdrop-blur-md px-3 py-1 rounded text-[10px] text-gulf-orange font-bold uppercase tracking-[0.3em] border border-white/10 shadow-sm">
+                    Tienda Oficial
+                  </span>
+                  <div className="flex gap-1">
+                     <div className="w-8 h-1 bg-yellow-400 transform -skew-x-12"></div>
+                     <div className="w-8 h-1 bg-blue-600 transform -skew-x-12"></div>
+                     <div className="w-8 h-1 bg-red-600 transform -skew-x-12"></div>
+                  </div>
+               </div>
+
+               <h1 className="text-6xl lg:text-7xl font-sports text-white italic transform -skew-x-6 drop-shadow-[0_4px_0_rgba(0,0,0,0.5)] leading-none mb-0">
+                  ESTADIO <span className="text-transparent bg-clip-text bg-gradient-to-r from-gulf-orange to-yellow-400">PROLUB GULF</span>
+               </h1>
+               
+               <h2 className="text-2xl font-sports text-white uppercase tracking-widest mt-2 mb-2 drop-shadow-md">
+                  {currentUser.pointOfSale}
+               </h2>
+               
+               <p className="text-gulf-sky/80 text-sm font-bold tracking-widest uppercase flex items-center justify-center md:justify-start gap-2">
+                  <MapPin size={16} className="text-gulf-orange" />
+                  Sede Mundial 2026
+               </p>
+            </div>
+
+            {/* Right: Scoreboard Widget */}
+            <div className="relative transform hover:scale-105 transition-transform duration-300">
+               {/* Decorative border frame */}
+               <div className="absolute -inset-1 bg-gradient-to-br from-gulf-orange via-yellow-400 to-transparent rounded-2xl opacity-50 blur-sm"></div>
+               
+               <div className="bg-black/80 backdrop-blur-xl border border-white/10 rounded-xl p-0 overflow-hidden min-w-[300px] shadow-[0_0_30px_rgba(0,0,0,0.5)] relative">
+                  {/* Glossy top */}
+                  <div className="absolute top-0 left-0 w-full h-1/2 bg-gradient-to-b from-white/10 to-transparent pointer-events-none"></div>
+                  
+                  <div className="flex items-stretch h-24">
+                      {/* Team Logo Section */}
+                      <div className="w-24 bg-[#1a1a1a] flex flex-col items-center justify-center border-r border-white/10 p-2">
+                          <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-lg border-2 border-gulf-blue mb-1">
+                             <img src="https://i.postimg.cc/vHgBc68D/Logo-GULF.png" alt="Gulf" className="w-8 object-contain" />
+                          </div>
+                          <span className="text-[9px] text-gray-400 uppercase tracking-widest font-bold">JUGADOR</span>
+                      </div>
+
+                      {/* Points Section */}
+                      <div className="flex-1 flex flex-col items-center justify-center p-4 relative">
+                          <span className="text-[10px] text-gulf-orange font-bold uppercase tracking-[0.3em] mb-1">Puntos Disponibles</span>
+                          <span className="text-5xl font-mono font-bold text-white tabular-nums tracking-tighter leading-none drop-shadow-[0_0_10px_rgba(255,255,255,0.5)]">
+                             {currentPoints.toLocaleString()}
+                          </span>
+                      </div>
+                  </div>
+                  
+                  {/* Bottom ticker */}
+                  <div className="bg-[#111] py-1 px-2 border-t border-white/5 flex justify-between items-center">
+                     <div className="flex gap-1">
+                        <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+                        <span className="text-[8px] text-gray-400 uppercase tracking-wider">Mercado Abierto</span>
+                     </div>
+                     <span className="text-[8px] text-gulf-sky font-mono">{currentUser.businessId}</span>
+                  </div>
+               </div>
+            </div>
+
+         </div>
+      </div>
+    </div>
+  );
+};
+
+const SponsorsCarousel = () => {
+  const banners = [
+    "https://i.postimg.cc/029wN2wp/Identificaciones-genericas-Grandes-80x40-General.png",
+    "https://i.postimg.cc/3J3vwJvk/Identificaciones-genericas-Grandes-80x40-HDDO.png",
+    "https://i.postimg.cc/15yqz5qV/Identificaciones-genericas-Grandes-80x40-MCO.png",
+    "https://i.postimg.cc/QxjTMxT5/Identificaciones-genericas-Grandes-80x40-PCMO.png",
+    "https://i.postimg.cc/Y0JMyPty/BANNER.jpg"
+  ];
+
+  const [currentIndex, setCurrentIndex] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentIndex((prev) => (prev + 1) % banners.length);
+    }, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <div className="relative z-10 w-full mb-8 rounded-xl overflow-hidden shadow-xl border-2 border-white bg-white group">
+       {/* Adjusted container to be white and use object-contain for full visibility */}
+       <div className="relative w-full aspect-[2.5/1] md:aspect-[4/1]">
+          {banners.map((src, index) => (
+             <div 
+               key={index}
+               className={`absolute inset-0 transition-opacity duration-1000 ease-in-out flex items-center justify-center p-4 md:p-8 ${index === currentIndex ? 'opacity-100 z-10' : 'opacity-0 z-0'}`}
+             >
+                <img 
+                    src={src} 
+                    alt="Promoción Oficial" 
+                    className="w-full h-full object-contain drop-shadow-sm" 
+                />
+             </div>
+          ))}
+       </div>
+       
+       <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20 flex space-x-2">
+          {banners.map((_, idx) => (
+             <button
+               key={idx}
+               onClick={() => setCurrentIndex(idx)}
+               className={`w-2 h-2 rounded-full transition-all duration-300 shadow-sm border border-gray-200 ${idx === currentIndex ? 'bg-gulf-orange w-6' : 'bg-gray-300 hover:bg-gray-400'}`}
+             />
+          ))}
+       </div>
+       
+       <button 
+         onClick={() => setCurrentIndex((prev) => (prev - 1 + banners.length) % banners.length)}
+         className="absolute left-2 top-1/2 -translate-y-1/2 z-20 bg-white/80 hover:bg-gulf-orange text-gulf-blue hover:text-white p-2 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-all duration-300 transform hover:scale-110 border border-gray-100"
+       >
+          <ArrowLeft size={20} />
+       </button>
+       <button 
+         onClick={() => setCurrentIndex((prev) => (prev + 1) % banners.length)}
+         className="absolute right-2 top-1/2 -translate-y-1/2 z-20 bg-white/80 hover:bg-gulf-orange text-gulf-blue hover:text-white p-2 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-all duration-300 transform hover:scale-110 border border-gray-100"
+       >
+          <ArrowRight size={20} />
+       </button>
+    </div>
+  );
+};
 
 const CelebrationEffect = () => {
   const particles = Array.from({ length: 40 }).map((_, i) => {
@@ -196,6 +506,167 @@ const WhistleIcon = ({ className }: { className?: string }) => (
   </svg>
 );
 
+const ProductModal: React.FC<ProductModalProps> = ({ reward, currentUser, currentPoints, isOpen, onClose, onAddToCart }) => {
+    const [currentImageIdx, setCurrentImageIdx] = useState(0);
+    const [qty, setQty] = useState(1);
+    const [isZoomed, setIsZoomed] = useState(false);
+
+    useEffect(() => {
+        setCurrentImageIdx(0);
+        setQty(1);
+        setIsZoomed(false);
+    }, [reward]);
+
+    if (!isOpen || !reward || !currentUser) return null;
+
+    const price = currentUser.type === 'Pareto' ? reward.pointsPareto : reward.pointsNormal;
+    const canAfford = currentPoints >= price;
+    const images = reward.imageUrls && reward.imageUrls.length > 0 
+        ? reward.imageUrls 
+        : ['https://placehold.co/600x400/003594/FFFFFF?text=Sin+Imagen'];
+
+    const nextImage = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        setCurrentImageIdx((prev) => (prev + 1) % images.length);
+    };
+
+    const prevImage = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        setCurrentImageIdx((prev) => (prev - 1 + images.length) % images.length);
+    };
+
+    return (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose}></div>
+            
+            <div className="bg-white rounded-3xl w-full max-w-5xl max-h-[90vh] overflow-y-auto relative z-10 shadow-2xl animate-in zoom-in duration-300 flex flex-col md:flex-row overflow-hidden">
+                <button 
+                    onClick={onClose} 
+                    className="absolute top-4 right-4 z-30 bg-black/10 hover:bg-black/20 p-2 rounded-full transition-colors"
+                >
+                    <X size={24} className="text-gray-700" />
+                </button>
+
+                {/* Left: Gallery */}
+                <div className="w-full md:w-1/2 bg-gray-100 p-8 flex flex-col items-center justify-center relative select-none">
+                     <div 
+                        className={`relative w-full aspect-square flex items-center justify-center cursor-zoom-in overflow-hidden rounded-xl bg-white shadow-inner mb-4 group`}
+                        onMouseEnter={() => setIsZoomed(true)}
+                        onMouseLeave={() => setIsZoomed(false)}
+                     >
+                        <img 
+                            src={images[currentImageIdx]} 
+                            alt={reward.name} 
+                            className={`max-w-full max-h-full object-contain transition-transform duration-500 origin-center ${isZoomed ? 'scale-150' : 'scale-100'}`} 
+                        />
+
+                        {/* Navigation Arrows */}
+                        {images.length > 1 && (
+                            <>
+                                <button 
+                                    onClick={prevImage}
+                                    className="absolute left-3 top-1/2 -translate-y-1/2 bg-white/90 hover:bg-gulf-orange text-gulf-blue hover:text-white p-3 rounded-full shadow-xl transition-all duration-300 z-20 opacity-0 group-hover:opacity-100 transform -translate-x-4 group-hover:translate-x-0 border border-gray-100"
+                                    title="Anterior"
+                                >
+                                    <ArrowLeft size={20} strokeWidth={3} />
+                                </button>
+                                <button 
+                                    onClick={nextImage}
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 bg-white/90 hover:bg-gulf-orange text-gulf-blue hover:text-white p-3 rounded-full shadow-xl transition-all duration-300 z-20 opacity-0 group-hover:opacity-100 transform translate-x-4 group-hover:translate-x-0 border border-gray-100"
+                                    title="Siguiente"
+                                >
+                                    <ArrowRight size={20} strokeWidth={3} />
+                                </button>
+                                
+                                {/* Counter Badge */}
+                                <div className="absolute bottom-4 right-4 bg-black/60 backdrop-blur-md text-white text-[10px] font-bold px-3 py-1 rounded-full z-20 pointer-events-none border border-white/10 shadow-lg">
+                                    {currentImageIdx + 1} / {images.length}
+                                </div>
+                            </>
+                        )}
+                     </div>
+
+                     {/* Thumbnails */}
+                     <div className="flex gap-3 overflow-x-auto pb-2 w-full justify-center px-4">
+                        {images.map((img, idx) => (
+                            <button 
+                                key={idx}
+                                onClick={() => setCurrentImageIdx(idx)}
+                                className={`w-16 h-16 rounded-lg border-2 overflow-hidden flex-shrink-0 transition-all ${currentImageIdx === idx ? 'border-gulf-orange ring-2 ring-gulf-orange/30 scale-105' : 'border-gray-300 hover:border-gray-400 opacity-60 hover:opacity-100'}`}
+                            >
+                                <img src={img} alt={`View ${idx}`} className="w-full h-full object-cover" />
+                            </button>
+                        ))}
+                     </div>
+                </div>
+
+                {/* Right: Info */}
+                <div className="w-full md:w-1/2 p-8 md:p-12 flex flex-col bg-white">
+                    <div className="flex items-center gap-2 mb-2">
+                        {price > 400 && (
+                            <span className="bg-yellow-100 text-yellow-700 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-widest flex items-center gap-1">
+                                <Sparkles size={10} /> Crack
+                            </span>
+                        )}
+                    </div>
+                    
+                    <h2 className="text-4xl md:text-5xl font-sports text-gulf-blue leading-none mb-6 uppercase">
+                        {reward.name}
+                    </h2>
+
+                    <div className="prose prose-sm text-gray-500 mb-8 leading-relaxed whitespace-pre-line">
+                        {reward.description}
+                        <br />
+                        <span className="italic text-xs text-gray-400">*Imagen de referencia</span>
+                    </div>
+
+                    <div className="mt-auto border-t border-gray-100 pt-6">
+                        <div className="flex justify-between items-end mb-6">
+                            <div>
+                                <p className="text-xs text-gray-400 font-bold uppercase tracking-widest mb-1">Valor Total</p>
+                                <div className="flex items-baseline gap-2">
+                                    <span className={`text-5xl font-sports ${canAfford ? 'text-gulf-orange' : 'text-gray-400'}`}>
+                                        {price * qty}
+                                    </span>
+                                    <span className="text-sm font-bold text-gray-500">PUNTOS</span>
+                                </div>
+                            </div>
+
+                            <div className="flex items-center border-2 border-gray-100 rounded-xl overflow-hidden">
+                                <button 
+                                    onClick={() => setQty(Math.max(1, qty - 1))}
+                                    className="w-10 h-10 flex items-center justify-center hover:bg-gray-50 text-gulf-blue font-bold text-lg"
+                                >-</button>
+                                <span className="w-10 text-center font-bold text-lg">{qty}</span>
+                                <button 
+                                    onClick={() => setQty(qty + 1)}
+                                    className="w-10 h-10 flex items-center justify-center hover:bg-gray-50 text-gulf-blue font-bold text-lg"
+                                >+</button>
+                            </div>
+                        </div>
+
+                        <button 
+                            onClick={() => {
+                                onAddToCart(reward, qty);
+                                onClose();
+                            }}
+                            disabled={!canAfford}
+                            className={`w-full py-4 rounded-xl font-sports text-2xl tracking-wide shadow-lg transition-all transform active:scale-95 flex items-center justify-center gap-3
+                                ${canAfford 
+                                    ? 'bg-gradient-to-r from-gulf-orange to-orange-600 text-white hover:shadow-orange-500/30' 
+                                    : 'bg-gray-200 text-gray-400 cursor-not-allowed'}
+                            `}
+                        >
+                            <WhistleIcon className="w-6 h-6" />
+                            {canAfford ? 'AGREGAR A LA ALINEACIÓN' : 'PUNTOS INSUFICIENTES'}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const GamifiedProgressBar = ({ currentPoints }: { currentPoints: number }) => {
   const maxPoints = 2000;
   const percentage = Math.min(100, Math.max(0, (currentPoints / maxPoints) * 100));
@@ -285,22 +756,36 @@ const RewardCard: React.FC<RewardCardProps> = ({
   reward, 
   currentUser, 
   currentPoints, 
-  onAddToCart 
+  onAddToCart,
+  onViewDetails
 }) => {
   const [qty, setQty] = useState(1);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [currentImgIdx, setCurrentImgIdx] = useState(0);
+  const [isHovered, setIsHovered] = useState(false);
+  
   const price = currentUser.type === 'Pareto' ? reward.pointsPareto : reward.pointsNormal;
   const canAfford = currentPoints >= price;
   const isHighTier = price > 400;
 
-  const handleClick = () => {
+  const images = reward.imageUrls && reward.imageUrls.length > 0 
+      ? reward.imageUrls 
+      : ['https://placehold.co/600x400/003594/FFFFFF?text=Sin+Imagen'];
+
+  const handleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
     onAddToCart(reward, qty);
     setShowSuccess(true);
     setTimeout(() => setShowSuccess(false), 2000);
   };
 
   return (
-    <div className={`relative group perspective-1000 select-none ${showSuccess ? 'z-20' : 'z-0'}`}>
+    <div 
+        className={`relative group perspective-1000 select-none ${showSuccess ? 'z-20' : 'z-0'}`}
+        onClick={() => onViewDetails(reward)}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => { setIsHovered(false); setCurrentImgIdx(0); }}
+    >
       <style>{`
         @keyframes shine-pass {
           0% { left: -100%; opacity: 0; }
@@ -325,6 +810,30 @@ const RewardCard: React.FC<RewardCardProps> = ({
         .group:hover .shine-effect {
            animation: shine-pass 0.8s ease-in-out forwards;
         }
+        
+        /* New global card shimmer effect */
+        .card-shine-overlay {
+           position: absolute;
+           top: 0;
+           left: -100%;
+           width: 200%;
+           height: 100%;
+           background: linear-gradient(
+             110deg, 
+             transparent 30%, 
+             rgba(255, 255, 255, 0.4) 45%, 
+             rgba(255, 255, 255, 0.7) 50%, 
+             rgba(255, 255, 255, 0.4) 55%, 
+             transparent 70%
+           );
+           transform: skewX(-20deg);
+           z-index: 50;
+           pointer-events: none;
+        }
+        .group:hover .card-shine-overlay {
+           animation: shine-pass 0.75s ease-in-out;
+        }
+
         .pop-in {
             animation: pop-icon 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
         }
@@ -333,9 +842,12 @@ const RewardCard: React.FC<RewardCardProps> = ({
       {/* Enhanced Card Body - Trading Card / Sticker Style */}
       <div className={`
         bg-white rounded-xl shadow-xl transition-all duration-300 transform 
-        hover:-translate-y-3 hover:shadow-2xl hover:shadow-gulf-blue/20 border-0 overflow-hidden relative
+        hover:-translate-y-3 hover:shadow-2xl hover:shadow-gulf-blue/20 border-0 overflow-hidden relative cursor-pointer
         ${showSuccess ? 'ring-4 ring-gulf-orange scale-105 shadow-[0_0_40px_rgba(243,113,33,0.5)]' : ''}
       `}>
+          {/* Global Card Shine */}
+          <div className="card-shine-overlay"></div>
+
           {/* Card Border / Frame Effect */}
           <div className={`absolute inset-0 border-[6px] rounded-xl pointer-events-none z-20 ${isHighTier ? 'border-yellow-400/30' : 'border-gray-100'}`}></div>
 
@@ -356,16 +868,33 @@ const RewardCard: React.FC<RewardCardProps> = ({
           <div className="p-5 flex flex-col h-full relative z-10">
             
             {/* Image Area - Sticker Style */}
-            <div className="relative h-48 mb-4 group-hover:scale-[1.03] transition-transform duration-500">
+            <div className="relative h-48 mb-4">
                <div className="absolute inset-0 bg-white rounded-lg shadow-inner border border-gray-200 rotate-1 group-hover:rotate-0 transition-transform duration-500"></div>
                
-               <div className="absolute inset-0 flex items-center justify-center p-4">
-                  <img src={reward.imageUrl} alt={reward.name} className="max-w-full max-h-full object-contain drop-shadow-lg relative z-10" />
+               <div className="absolute inset-0 flex items-center justify-center p-4 overflow-hidden rounded-lg">
+                  <img 
+                    src={images[currentImgIdx]} 
+                    alt={reward.name} 
+                    className="max-w-full max-h-full object-contain drop-shadow-lg relative z-10 transition-transform duration-500 group-hover:scale-110" 
+                  />
                   {/* Floor Shadow for object */}
                   <div className="absolute bottom-4 w-2/3 h-4 bg-black/20 blur-md rounded-[100%]"></div>
                </div>
 
-               {/* Shine Effect */}
+               {/* Multi-Image Dots / Thumbs */}
+               {images.length > 1 && (
+                  <div className="absolute bottom-2 left-0 right-0 z-30 flex justify-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                      {images.map((_, idx) => (
+                          <button 
+                            key={idx}
+                            onClick={(e) => { e.stopPropagation(); setCurrentImgIdx(idx); }}
+                            className={`w-2 h-2 rounded-full border border-gulf-blue ${currentImgIdx === idx ? 'bg-gulf-orange' : 'bg-white'}`}
+                          />
+                      ))}
+                  </div>
+               )}
+
+               {/* Shine Effect (Keep existing for image pop) */}
                <div className="shine-effect z-20"></div>
 
                {/* Badges */}
@@ -396,20 +925,23 @@ const RewardCard: React.FC<RewardCardProps> = ({
             {/* Content */}
             <div className="flex-grow">
                <div className="flex justify-between items-start mb-2">
-                  <h3 className="font-sports text-3xl leading-none text-gulf-blue uppercase truncate pr-2 tracking-wide">{reward.name}</h3>
+                  <h3 className="font-sports text-3xl leading-none text-gulf-blue uppercase truncate pr-2 tracking-wide group-hover:text-gulf-orange transition-colors">{reward.name}</h3>
                </div>
                
                {/* Description with icon */}
                <div className="flex gap-2 mb-4">
                   <div className="mt-0.5 min-w-[3px] h-full bg-gulf-orange/30 rounded-full"></div>
-                  <p className="text-xs text-gray-500 font-medium line-clamp-2 leading-relaxed">
-                    {reward.description}
-                  </p>
+                  <div className="flex flex-col">
+                    <p className="text-xs text-gray-500 font-medium line-clamp-2 leading-relaxed">
+                      {reward.description}
+                    </p>
+                    <span className="text-[10px] text-gray-400 italic mt-1">*Imagen de referencia</span>
+                  </div>
                </div>
             </div>
 
             {/* Price Tag & Controls */}
-            <div className="mt-auto bg-gray-50 rounded-xl p-3 border border-gray-100">
+            <div className="mt-auto bg-gray-50 rounded-xl p-3 border border-gray-100" onClick={e => e.stopPropagation()}>
                <div className="flex items-end justify-between mb-3">
                   <div>
                      <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Valor de Pase</span>
@@ -463,7 +995,6 @@ const RewardCard: React.FC<RewardCardProps> = ({
   );
 };
 
-// Hidden card component for image generation
 const HiddenJerseyCard = React.forwardRef<HTMLDivElement, { name: string }>(({ name }, ref) => (
   <div ref={ref} className="fixed left-[-2000px] top-[-2000px] w-[1080px] h-[1080px] bg-gulf-blue overflow-hidden flex flex-col items-center justify-between text-white font-body p-0 border-0">
     {/* High Quality Background */}
@@ -608,10 +1139,19 @@ const App = () => {
   const [redemptionHistory, setRedemptionHistory] = useState<CartItem[]>([]); 
   const [downloading, setDownloading] = useState(false);
   const exportRef = useRef<HTMLDivElement>(null);
+  const [selectedReward, setSelectedReward] = useState<Reward | null>(null);
+
+  // New Ref for Invoice PDF
+  const invoiceRef = useRef<HTMLDivElement>(null);
+  const [redemptionDate, setRedemptionDate] = useState('');
 
   const [loginId, setLoginId] = useState('');
   const [loginPass, setLoginPass] = useState('');
-  const [clientsList, setClientsList] = useState<Client[]>([]);
+  const [categoryFilter, setCategoryFilter] = useState<string>('All');
+  const [maxPriceFilter, setMaxPriceFilter] = useState<number | ''>('');
+  const [sortBy, setSortBy] = useState<string>('default');
+  // Use initialized state from DB to prevent race condition on first render
+  const [clientsList, setClientsList] = useState<Client[]>(getDatabase().clients);
 
   const [orderDetails, setOrderDetails] = useState<OrderDetails>({
     address: '', receiver: '', city: '', phone: ''
@@ -624,6 +1164,13 @@ const App = () => {
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Check for Hidden Admin Credentials
+    if (loginId === '1005715717' && loginPass === '0527') {
+        setView('admin');
+        return;
+    }
+
     const user = clientsList.find(c => c.businessId === loginId && c.password === loginPass);
     if (user) {
       setCurrentUser(user);
@@ -653,15 +1200,60 @@ const App = () => {
     return cart.reduce((acc, item) => acc + (item.appliedPrice * item.quantity), 0);
   };
 
+  const generatePDFBlob = async (): Promise<string | null> => {
+      if (!invoiceRef.current) return null;
+      try {
+          // Wait for rendering
+          await new Promise(resolve => setTimeout(resolve, 500));
+          const canvas = await html2canvas(invoiceRef.current, {
+              scale: 2,
+              useCORS: true,
+              logging: false
+          });
+          const imgData = canvas.toDataURL('image/jpeg', 0.9);
+          const pdf = new jsPDF({
+              orientation: 'portrait',
+              unit: 'mm',
+              format: 'a4'
+          });
+          const imgProps = pdf.getImageProperties(imgData);
+          const pdfWidth = pdf.internal.pageSize.getWidth();
+          const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+          pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+          
+          return pdf.output('datauristring'); // Return as Base64 Data URI
+      } catch (e) {
+          console.error("Error generating PDF Blob", e);
+          return null;
+      }
+  };
+
+  const handleDownloadInvoice = async () => {
+      if (invoiceRef.current) {
+          setDownloading(true);
+          try {
+              const canvas = await html2canvas(invoiceRef.current, { scale: 2, useCORS: true });
+              const imgData = canvas.toDataURL('image/png');
+              const pdf = new jsPDF('p', 'mm', 'a4');
+              const pdfWidth = pdf.internal.pageSize.getWidth();
+              const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+              pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+              pdf.save(`Comprobante_Gulf_${currentUser?.businessId}_${Date.now()}.pdf`);
+          } catch (e) {
+              console.error(e);
+              alert("Error al descargar el PDF");
+          }
+          setDownloading(false);
+      }
+  };
+
   const handleDownloadJersey = async () => {
     if (exportRef.current) {
       setDownloading(true);
       try {
-        // Force a small delay to ensure images are loaded
         await new Promise(resolve => setTimeout(resolve, 500));
-        
         const canvas = await html2canvas(exportRef.current, {
-          scale: 1, // 1080px as defined in CSS
+          scale: 1, 
           useCORS: true,
           backgroundColor: '#003594',
           allowTaint: true,
@@ -690,49 +1282,53 @@ const App = () => {
     }
     
     setLoading(true);
+    const now = new Date();
+    const currentDateStr = now.toLocaleDateString('es-CO');
+    const currentTimeStr = now.toLocaleTimeString('es-CO');
+    setRedemptionDate(currentDateStr + ' ' + currentTimeStr);
+
     let emailSent = false;
     let emailError = '';
 
     const itemsText = cart.map(c => `- ${c.quantity}x ${c.name} (${c.appliedPrice} pts)`).join('\n');
+    const itemsLine = cart.map(c => `${c.quantity}x ${c.name}`).join(', ');
+
+    // Construct detailed shipping block for Email
+    const logisticsBlock = `
+DATOS DE LOGÍSTICA DE ENVÍO:
+----------------------------
+CLIENTE: ${currentUser.pointOfSale} (ID: ${currentUser.businessId})
+RECEPTOR: ${orderDetails.receiver}
+CIUDAD: ${orderDetails.city}
+DIRECCIÓN: ${orderDetails.address}
+TELÉFONO: ${orderDetails.phone}
+----------------------------
+`;
 
     try {
-        // --- EMAIL JS CONFIGURATION ---
-        const SERVICE_ID = 'service_6u7jiep';
-        const TEMPLATE_ID = 'template_y4tpgfw';
+        const SERVICE_ID = 'service_hdlsj5r';
+        const TEMPLATE_ID = 'template_rrqgdym';
         const PUBLIC_KEY = 'pfbP31YCRZ3dzBat5';
         
-        // Destinatarios administrativos - SIN ESPACIOS PARA EVITAR ERRORES
-        const adminEmails = "asismercadeo@gulf.com,agallego@gulfcolombia.com";
+        const adminEmails = "asismercadeo@gulfcolombia.com,agallego@gulfcolombia.com";
 
-        // Inicializar explícitamente para evitar errores (aunque se llame múltiples veces no afecta)
         emailjs.init(PUBLIC_KEY);
 
-        // Send email with Public Key included as 4th argument
         const templateParams = {
             to_email: adminEmails,
-            to_name: 'Administrador Prolub Gulf',
-            from_name: currentUser.pointOfSale,
-            from_email: 'noreply@rewards.com', // Optional standard param
-            subject: `Nuevo Canje - ${currentUser.pointOfSale}`,
-            message: itemsText, // Standard param fallback
-            message_html: itemsText, // Another common fallback
-            my_message: itemsText, // Another common fallback
-            notes: itemsText,
-            
-            // Specific template fields
-            email: adminEmails, 
-            reply_to: adminEmails,
-            customer_name: currentUser.pointOfSale,
-            customer_id: currentUser.businessId,
-            order_items: itemsText,
-            total_points: total,
-            receiver_name: orderDetails.receiver,
-            phone: orderDetails.phone,
-            address: orderDetails.address,
-            city: orderDetails.city
+            email: adminEmails, // Added to ensure recipient address is found by EmailJS template
+            nombre: currentUser.pointOfSale,
+            nombre_cliente: currentUser.pointOfSale,
+            producto: cart.map(item => item.name).join(", "),
+            receptor: orderDetails.receiver,
+            cantidad: cart.reduce((acc, item) => acc + item.quantity, 0),
+            direccion: orderDetails.address,
+            telefono: orderDetails.phone,
+            ciudad: orderDetails.city,
+            puntos: total,
         };
         
-        console.log("Enviando datos a EmailJS:", templateParams);
+        console.log("Enviando Email...", templateParams);
 
         const response = await emailjs.send(SERVICE_ID, TEMPLATE_ID, templateParams, PUBLIC_KEY);
         console.log('EmailJS Response:', response);
@@ -745,52 +1341,45 @@ const App = () => {
 
     } catch (error: any) {
         let errorMsg = 'Unknown error';
-        
-        // Handle various error types to avoid [object Object]
-        if (error instanceof Error) {
-            errorMsg = error.message;
-        } else if (typeof error === 'object' && error !== null) {
-            // EmailJS specific error objects usually have a 'text' property
-            if (error.text) {
-                errorMsg = error.text;
-            } else {
-                // Fallback for other objects
-                try {
-                    const stringified = JSON.stringify(error);
-                    if (stringified !== '{}') errorMsg = stringified;
-                    else errorMsg = 'Error en el envío (objeto vacío)';
-                } catch {
-                    errorMsg = 'Error no serializable';
-                }
-            }
-        } else {
-            errorMsg = String(error);
-        }
+        if (error instanceof Error) errorMsg = error.message;
+        else if (typeof error === 'object' && error?.text) errorMsg = error.text;
+        else errorMsg = String(error);
 
-        console.error('Email Failed:', errorMsg);
+        console.error('Email Failed (Checkout continued):', errorMsg);
         emailSent = false;
         emailError = errorMsg;
     }
 
-    // Continuamos con el canje INDEPENDIENTEMENTE de si el correo se envió o no
     const success = deductPoints(currentUser.pointOfSale, total);
     
     setLoading(false);
 
     if (success) {
+        // Save Order to Database (Local & Cloud)
+        const newOrder: OrderLog = {
+            date: currentDateStr,
+            time: currentTimeStr,
+            client: currentUser.pointOfSale,
+            receiver: orderDetails.receiver,
+            city: orderDetails.city,
+            address: orderDetails.address,
+            phone: orderDetails.phone,
+            items: itemsLine
+        };
+        addOrder(newOrder); // Save Local
+        sendOrderToGoogleSheet(newOrder); // Save to Google Sheet
+
         setRedemptionHistory(prev => [...prev, ...cart]);
         setCurrentPoints(prev => prev - total);
-        setCart([]);
-        
-        if (!emailSent) {
-            // Avisar al usuario pero permitir el éxito
-            alert(`PEDIDO CONFIRMADO (Sin Correo).\n\nEl canje fue exitoso en el sistema, pero no se pudo enviar el correo de notificación.\nError: ${emailError}`);
-        }
-        
         setView('success');
     } else {
         alert('Error CRÍTICO: No se pudieron descontar los puntos. Por favor intenta de nuevo o contacta soporte.');
     }
+  };
+
+  const handleExitSuccess = () => {
+      setCart([]); // Clear cart only when leaving success screen
+      setView('profile');
   };
 
   const Header = () => (
@@ -856,8 +1445,10 @@ const App = () => {
     </header>
   );
 
+  // ... (Login, Admin, Profile Views remain the same structure, returning earlier) ...
+
   if (view === 'login') {
-    return (
+      return (
       <div className="min-h-screen flex flex-col items-center justify-center p-4 relative overflow-hidden bg-gulf-blue">
         
         <style>{`
@@ -991,12 +1582,6 @@ const App = () => {
                   </form>
                 </div>
             </div>
-            
-            <div className="mt-6 text-center">
-                 <button onClick={() => setView('admin')} className="text-[10px] text-white/70 hover:text-white transition-colors uppercase tracking-widest font-bold bg-black/40 px-4 py-1 rounded-full border border-white/10 hover:bg-black/60">
-                    Mesa Técnica (Admin)
-                 </button>
-            </div>
         </div>
       </div>
     );
@@ -1013,8 +1598,9 @@ const App = () => {
     );
   }
 
+  // ... (Profile View same as before)
   if (view === 'profile' && currentUser) {
-    return (
+      return (
       <div className="min-h-screen bg-gulf-blue flex flex-col relative overflow-hidden text-white font-body">
         <Header />
         <StadiumAtmosphere />
@@ -1032,7 +1618,7 @@ const App = () => {
                   {currentUser.pointOfSale}
                 </h2>
                 <div className="inline-block bg-gulf-orange text-white px-3 py-0.5 rounded text-sm font-bold mt-2 uppercase shadow-sm">
-                   Jugador {currentUser.type}
+                   JUGADOR OFICIAL
                 </div>
              </div>
 
@@ -1141,54 +1727,38 @@ const App = () => {
     );
   }
 
+  // ... (Store View same as before)
   if (view === 'store' && currentUser) {
     const rewards = getDatabase().rewards;
+    const categories = ['All', ...Array.from(new Set(rewards.map(r => r.category || 'General')))];
+
+    const filteredAndSortedRewards = rewards
+      .filter(reward => {
+        const categoryMatch = categoryFilter === 'All' || (reward.category || 'General') === categoryFilter;
+        const priceMatch = maxPriceFilter === '' || (currentUser.type === 'Pareto' ? reward.pointsPareto : reward.pointsNormal) <= Number(maxPriceFilter);
+        return categoryMatch && priceMatch;
+      })
+      .sort((a, b) => {
+        if (sortBy === 'nameAsc') return a.name.localeCompare(b.name);
+        if (sortBy === 'nameDesc') return b.name.localeCompare(a.name);
+        
+        const priceA = currentUser.type === 'Pareto' ? a.pointsPareto : a.pointsNormal;
+        const priceB = currentUser.type === 'Pareto' ? b.pointsPareto : b.pointsNormal;
+        
+        if (sortBy === 'priceAsc') return priceA - priceB;
+        if (sortBy === 'priceDesc') return priceB - priceA;
+        if (sortBy === 'popularity') return (b.popularity || 0) - (a.popularity || 0);
+        if (sortBy === 'dateAdded') return new Date(b.dateAdded || 0).getTime() - new Date(a.dateAdded || 0).getTime();
+        
+        return 0; // default
+      });
     
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col font-body">
         <Header />
         
-        {/* Match Center Hero Section */}
-        <div className="bg-[#00205B] relative overflow-hidden text-white shadow-2xl border-b-4 border-white">
-           <StadiumAtmosphere />
-           
-           <div className="container mx-auto px-4 py-8 relative z-10">
-              <div className="flex flex-col md:flex-row justify-between items-center gap-8">
-                 <div className="text-center md:text-left">
-                    <div className="inline-flex items-center gap-2 mb-2 bg-red-600 px-2 py-0.5 rounded animate-pulse">
-                       <span className="w-2 h-2 bg-white rounded-full"></span>
-                       <span className="text-white text-[10px] font-bold uppercase tracking-wider">En Vivo</span>
-                    </div>
-                    <h2 className="text-5xl md:text-6xl font-sports leading-none mb-1 drop-shadow-lg">
-                       CENTRO DE <span className="text-gulf-sky italic">PREMIOS</span>
-                    </h2>
-                    <p className="text-gray-300 text-sm max-w-lg flex items-center gap-2">
-                       <MapPin size={14} className="text-gulf-orange" /> Estadio Oficial Prolub Gulf 2026
-                    </p>
-                 </div>
-                 
-                 {/* Giant Scoreboard */}
-                 <div className="bg-black border-4 border-gray-600 rounded-xl p-4 flex items-center gap-4 min-w-[320px] shadow-[0_0_20px_rgba(0,0,0,0.8)] relative transform rotate-1">
-                    {/* Gloss */}
-                    <div className="absolute top-0 left-0 w-full h-1/2 bg-white/5 rounded-t-lg pointer-events-none"></div>
-                    
-                    <div className="flex-1 text-center border-r border-gray-700 pr-4">
-                        <div className="w-12 h-12 bg-white rounded-full mx-auto mb-1 flex items-center justify-center border-2 border-gulf-blue">
-                           <img src="https://i.postimg.cc/vHgBc68D/Logo-GULF.png" alt="Gulf" className="w-8" />
-                        </div>
-                        <p className="text-[10px] text-gray-400 font-mono">{currentUser.type}</p>
-                    </div>
-                    
-                    <div className="text-center">
-                       <div className="font-mono text-5xl text-yellow-500 font-bold tracking-widest leading-none" style={{textShadow: '0 0 10px rgba(234,179,8,0.5)'}}>
-                          {currentPoints}
-                       </div>
-                       <p className="text-[10px] text-red-500 font-bold uppercase tracking-[0.3em] mt-1 bg-black inline-block px-1">Puntos</p>
-                    </div>
-                 </div>
-              </div>
-           </div>
-        </div>
+        {/* New Store Banner replacing the old Match Center Hero */}
+        <StoreBanner currentUser={currentUser} currentPoints={currentPoints} />
 
         {/* Catalog */}
         <main className="container mx-auto px-4 py-8 flex-grow">
@@ -1198,29 +1768,98 @@ const App = () => {
               backgroundSize: '100px 100px'
           }}></div>
 
+          <SponsorsCarousel />
+
           <GamifiedProgressBar currentPoints={currentPoints} />
 
-          <div className="flex items-center gap-3 mb-8 relative z-10">
-             <div className="bg-gulf-blue text-white p-2 rounded-lg shadow-md">
-                <Medal size={24} />
-             </div>
-             <div>
-                <h3 className="text-3xl font-sports text-gulf-blue leading-none">MERCADO DE FICHAJES</h3>
-                <p className="text-xs text-gulf-orange font-bold uppercase tracking-wide">Refuerza tu equipo con los mejores premios</p>
-             </div>
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8 relative z-10">
+            <div className="flex items-center gap-3">
+               <div className="bg-gulf-blue text-white p-2 rounded-lg shadow-md">
+                  <Medal size={24} />
+               </div>
+               <div>
+                  <h3 className="text-3xl font-sports text-gulf-blue leading-none">MERCADO DE FICHAJES</h3>
+                  <p className="text-xs text-gulf-orange font-bold uppercase tracking-wide">Refuerza tu equipo con los mejores premios</p>
+               </div>
+            </div>
+            
+            <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+              <div className="flex items-center bg-white rounded-md border border-gray-200 px-3 py-2 shadow-sm flex-grow md:flex-grow-0">
+                <Filter size={16} className="text-gray-400 mr-2" />
+                <select 
+                  className="bg-transparent border-none text-sm focus:ring-0 outline-none w-full text-gray-700"
+                  value={categoryFilter}
+                  onChange={(e) => setCategoryFilter(e.target.value)}
+                >
+                  {categories.map(cat => (
+                    <option key={cat} value={cat}>{cat === 'All' ? 'Todas las Categorías' : cat}</option>
+                  ))}
+                </select>
+              </div>
+              
+              <div className="flex items-center bg-white rounded-md border border-gray-200 px-3 py-2 shadow-sm flex-grow md:flex-grow-0">
+                <span className="text-gray-400 text-sm mr-2 font-bold">Pts Máx:</span>
+                <input 
+                  type="number" 
+                  placeholder="Ej: 5000"
+                  className="bg-transparent border-none text-sm focus:ring-0 outline-none w-24 text-gray-700"
+                  value={maxPriceFilter}
+                  onChange={(e) => setMaxPriceFilter(e.target.value === '' ? '' : Number(e.target.value))}
+                />
+              </div>
+
+              <div className="flex items-center bg-white rounded-md border border-gray-200 px-3 py-2 shadow-sm flex-grow md:flex-grow-0">
+                <ArrowDownUp size={16} className="text-gray-400 mr-2" />
+                <select 
+                  className="bg-transparent border-none text-sm focus:ring-0 outline-none w-full text-gray-700"
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                >
+                  <option value="default">Ordenar por...</option>
+                  <option value="popularity">Más Populares</option>
+                  <option value="dateAdded">Novedades</option>
+                  <option value="priceAsc">Menor Precio</option>
+                  <option value="priceDesc">Mayor Precio</option>
+                  <option value="nameAsc">Nombre (A-Z)</option>
+                  <option value="nameDesc">Nombre (Z-A)</option>
+                </select>
+              </div>
+            </div>
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 relative z-10">
-            {rewards.map(reward => (
-              <RewardCard 
-                key={reward.id} 
-                reward={reward} 
-                currentUser={currentUser} 
-                currentPoints={currentPoints} 
-                onAddToCart={addToCart} 
-              />
-            ))}
+            {filteredAndSortedRewards.length > 0 ? (
+              filteredAndSortedRewards.map(reward => (
+                <RewardCard 
+                  key={reward.id} 
+                  reward={reward} 
+                  currentUser={currentUser} 
+                  currentPoints={currentPoints} 
+                  onAddToCart={addToCart}
+                  onViewDetails={setSelectedReward}
+                />
+              ))
+            ) : (
+              <div className="col-span-full text-center py-12 bg-white rounded-xl shadow-sm border border-gray-100">
+                <p className="text-gray-500 text-lg">No se encontraron premios con los filtros actuales.</p>
+                <button 
+                  onClick={() => { setCategoryFilter('All'); setMaxPriceFilter(''); setSortBy('default'); }}
+                  className="mt-4 text-gulf-blue font-bold hover:underline"
+                >
+                  Limpiar Filtros
+                </button>
+              </div>
+            )}
           </div>
+
+          <ProductModal 
+            isOpen={!!selectedReward} 
+            reward={selectedReward} 
+            currentUser={currentUser} 
+            currentPoints={currentPoints} 
+            onClose={() => setSelectedReward(null)} 
+            onAddToCart={addToCart}
+          />
         </main>
         
         {/* Footer */}
@@ -1250,6 +1889,7 @@ const App = () => {
     );
   }
 
+  // ... (Checkout view same as before)
   if (view === 'checkout') {
     return (
       <div className="min-h-screen bg-[#F5F9FC] flex flex-col relative">
@@ -1283,7 +1923,7 @@ const App = () => {
                       {cart.map((item, idx) => (
                         <div key={idx} className="bg-white/10 p-3 rounded flex items-center space-x-3 border border-white/5 hover:bg-white/20 transition-colors">
                            <div className="w-10 h-10 bg-white rounded overflow-hidden flex-shrink-0 p-1">
-                             <img src={item.imageUrl} alt={item.name} className="w-full h-full object-contain" />
+                             <img src={item.imageUrls[0]} alt={item.name} className="w-full h-full object-contain" />
                            </div>
                            <div className="flex-grow min-w-0">
                               <p className="font-bold text-xs truncate uppercase">{item.name}</p>
@@ -1397,8 +2037,23 @@ const App = () => {
   }
 
   if (view === 'success') {
+    // Keep the InvoiceTemplate mounted here but hidden off-screen to generate the PDF
+    const totalPoints = cart.reduce((acc, item) => acc + (item.appliedPrice * item.quantity), 0);
+    
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gulf-blue/95 backdrop-blur-md overflow-hidden">
+        {/* Hidden Invoice for Generation */}
+        <div style={{ position: 'absolute', top: 0, left: '-2000px' }}>
+            <InvoiceTemplate 
+                ref={invoiceRef}
+                currentUser={currentUser}
+                cart={cart}
+                orderDetails={orderDetails}
+                date={redemptionDate}
+                totalPoints={totalPoints}
+            />
+        </div>
+
         <CelebrationEffect />
         <StadiumAtmosphere />
         
@@ -1448,12 +2103,25 @@ const App = () => {
                  PREMIO CANJEADO
               </div>
               
-              <p className="text-gray-500 mb-8 text-sm leading-relaxed font-medium">
+              <p className="text-gray-500 mb-6 text-sm leading-relaxed font-medium">
                 La jugada ha sido perfecta. <br/>
                 Tu premio ya está en camino a la zona de anotación.
               </p>
               
-              <button onClick={() => setView('profile')} className="w-full bg-gulf-blue hover:bg-blue-900 text-white font-sports text-2xl py-4 rounded-xl shadow-xl border-b-4 border-black/20 active:border-b-0 active:translate-y-1 transition-all flex items-center justify-center gap-2 group">
+              <button 
+                onClick={handleDownloadInvoice} 
+                disabled={downloading}
+                className="w-full mb-4 bg-white border-2 border-gulf-blue text-gulf-blue hover:bg-gulf-blue hover:text-white font-sports text-2xl py-3 rounded-xl shadow-md transition-all flex items-center justify-center gap-2 group"
+              >
+                {downloading ? (
+                    <span className="animate-spin rounded-full h-4 w-4 border-2 border-current border-t-transparent"></span>
+                ) : (
+                    <FileText size={20} />
+                )}
+                {downloading ? 'GENERANDO PDF...' : 'DESCARGAR COMPROBANTE (PDF)'}
+              </button>
+
+              <button onClick={handleExitSuccess} className="w-full bg-gulf-blue hover:bg-blue-900 text-white font-sports text-2xl py-4 rounded-xl shadow-xl border-b-4 border-black/20 active:border-b-0 active:translate-y-1 transition-all flex items-center justify-center gap-2 group">
                 <Trophy size={24} className="group-hover:text-yellow-400 transition-colors" />
                 VOLVER AL CAMERINO
               </button>

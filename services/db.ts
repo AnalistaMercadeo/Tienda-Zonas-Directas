@@ -1,6 +1,6 @@
-import { Client, ClientPoints, Reward, Database, ClientType } from '../types';
+import { Client, ClientPoints, Reward, Database, ClientType, OrderLog } from '../types';
 
-const DB_KEY = 'gulf_prolub_db_v2'; // Incremented version to force refresh
+const DB_KEY = 'gulf_prolub_db_v9'; // Incremented to v7 to add new rewards
 const DEFAULT_POINTS = 0; 
 
 const RAW_CLIENTS_CSV = `Tipo de cliente;Id;Punto de venta;Contraseña
@@ -570,8 +570,6 @@ INVERSIONES BOGOTA MOTORS SAS;10
 IBA EZ ALFONSO EFRAIN;10`;
 
 // Función para normalizar claves de búsqueda
-// Elimina tildes, ñ (la vuelve N o elimina según caso para matching fuzzy), y caracteres no alfanuméricos.
-// Esto permite que "NIÑO" haga match con "NI O" o "NI O" con "NIO".
 const normalizeKey = (str: string) => {
   return str.toUpperCase().replace(/[^A-Z0-9]/g, '');
 };
@@ -583,7 +581,6 @@ const parseDataFromCSVs = (): { clients: Client[], points: ClientPoints[] } => {
   const clients: Client[] = [];
   const pointsMap = new Map<string, number>();
 
-  // 1. Parsear Puntos y guardar en mapa con clave normalizada
   const pointsStart = pointsLines[0].startsWith('Punto de venta') ? 1 : 0;
   for (let i = pointsStart; i < pointsLines.length; i++) {
     const line = pointsLines[i].trim();
@@ -592,12 +589,10 @@ const parseDataFromCSVs = (): { clients: Client[], points: ClientPoints[] } => {
     if (parts.length >= 2) {
       const posName = parts[0].trim();
       const pts = parseInt(parts[1].trim()) || 0;
-      // Guardamos usando la clave normalizada para tolerar fallos de encoding
       pointsMap.set(normalizeKey(posName), pts);
     }
   }
 
-  // 2. Parsear Clientes y buscar sus puntos
   const clientsStart = clientsLines[0].startsWith('Tipo de cliente') ? 1 : 0;
   const points: ClientPoints[] = [];
 
@@ -606,7 +601,6 @@ const parseDataFromCSVs = (): { clients: Client[], points: ClientPoints[] } => {
     if (!line) continue;
     
     const parts = line.split(';');
-    // Now expecting 4 columns: Tipo; Id; Punto de venta; Contraseña
     if (parts.length >= 4) {
       const type = parts[0].trim() as ClientType;
       const businessId = parts[1].trim();
@@ -622,7 +616,6 @@ const parseDataFromCSVs = (): { clients: Client[], points: ClientPoints[] } => {
           type
         });
         
-        // Buscar puntos usando normalización del Nombre del Punto de Venta
         const normalizedPOS = normalizeKey(pointOfSale);
         const pts = pointsMap.get(normalizedPOS);
 
@@ -643,87 +636,855 @@ const INITIAL_DATA: Database = {
   clients: parsedClients,
   points: parsedPoints,
   rewards: [
-    {
-      id: 'rw_001',
-      name: 'Camisetas COL',
-      description: 'Póntela con orgullo, porque el partido también se juega con el corazón. Vestirse de selección es parte del ritual.',
-      pointsPareto: 444,
-      pointsNormal: 222,
-      imageUrl: 'https://i.postimg.cc/QNp3mpDs/Camiseta-Seleccion-COL.avif'
-    },
-    {
-      id: 'rw_002',
-      name: 'Gorra / Vaso cervecero',
-      description: 'Porque el hincha se reconoce desde el primer sorbo y hasta el último minuto. Para vivir el partido como se debe',
-      pointsPareto: 89,
-      pointsNormal: 44,
-      imageUrl: 'https://placehold.co/600x400/002664/FFFFFF?text=Gorra+Gulf'
-    },
-    {
-      id: 'rw_003',
-      name: 'Balón original Selección Colombia',
-      description: 'El balón que despierta sueños, pasiones y recuerdos de Mundial. Emocional y aspiracional.',
-      pointsPareto: 256,
-      pointsNormal: 128,
-      imageUrl: 'https://placehold.co/600x400/002664/FFFFFF?text=Balon+Seleccion'
-    },
-    {
-      id: 'rw_004',
-      name: 'Sanduchera',
-      description: 'Mientras rueda el balón, prepárate el sánduche del gol. Tal cual tu idea, perfecta y muy memorable.',
-      pointsPareto: 144,
-      pointsNormal: 72,
-      imageUrl: 'https://placehold.co/600x400/002664/FFFFFF?text=Sanduchera'
-    },
-    {
-      id: 'rw_005',
-      name: 'Mini parrilla eléctrica',
-      description: 'Cuando el partido se alarga, la parrilla también entra en la cancha. Perfecta para tiempos extra, reuniones y celebraciones.',
-      pointsPareto: 89,
-      pointsNormal: 44,
-      imageUrl: 'https://placehold.co/600x400/002664/FFFFFF?text=Parrilla+Electrica'
-    },
-    {
-      id: 'rw_006',
-      name: 'Hielera',
-      description: 'Que nada se caliente… ni el partido ni la bebida. Muy fútbol, muy reunión.',
-      pointsPareto: 63,
-      pointsNormal: 32,
-      imageUrl: 'https://placehold.co/600x400/002664/FFFFFF?text=Hielera'
-    },
-    {
-      id: 'rw_007',
-      name: 'Parlante Bluetooth',
-      description: 'Que el grito de gol se escuche en toda la casa. Esta frase es oro para volumen de puntos.',
-      pointsPareto: 78,
-      pointsNormal: 39,
-      imageUrl: 'https://placehold.co/600x400/002664/FFFFFF?text=Parlante+BT'
-    },
-    {
-      id: 'rw_008',
-      name: 'Barra de sonido',
-      description: 'Cada jugada, cada emoción, como si estuvieras al borde de la cancha. Eleva la experiencia del partido.',
-      pointsPareto: 217,
-      pointsNormal: 108,
-      imageUrl: 'https://placehold.co/600x400/002664/FFFFFF?text=Barra+Sonido'
-    },
-    {
-      id: 'rw_009',
-      name: 'Televisor 45"',
-      description: 'Vive cada partido como si estuvieras en la tribuna. Perfecta, directa y poderosa.',
-      pointsPareto: 1000,
-      pointsNormal: 500,
-      imageUrl: 'https://placehold.co/600x400/002664/FFFFFF?text=TV+45+Pulgadas'
-    },
-    {
-      id: 'rw_010',
-      name: 'Televisor 55” – Gran premio',
-      description: 'El Mundial no se mira… se vive en grande. Frase estrella, muy aspiracional.',
-      pointsPareto: 1667,
-      pointsNormal: 833,
-      imageUrl: 'https://placehold.co/600x400/002664/FFFFFF?text=TV+55+Gran+Premio'
-    }
-  ]
+  {
+    "id": "rw_001",
+    "name": "Camisetas COL",
+    "description": "Póntela con orgullo, porque el partido también se juega con el corazón.\nVestirse de selección es parte del ritual.",
+    "pointsPareto": 444,
+    "pointsNormal": 222,
+    "imageUrls": [
+      "https://i.postimg.cc/QNp3mpDs/Camiseta-Seleccion-COL.avif"
+    ],
+    "category": "Ropa",
+    "popularity": 90,
+    "dateAdded": "2024-01-01"
+  },
+  {
+    "id": "rw_002",
+    "name": "Gorra / Vaso cervecero",
+    "description": "Porque el hincha se reconoce desde el primer sorbo y hasta el último minuto.\nPara vivir el partido como se debe",
+    "pointsPareto": 463,
+    "pointsNormal": 231,
+    "imageUrls": [
+      "https://i.postimg.cc/DzwhcvnQ/Gorra_Cerrada_gulf_prolub.png"
+    ],
+    "category": "Accesorios",
+    "popularity": 70,
+    "dateAdded": "2024-01-02"
+  },
+  {
+    "id": "rw_003",
+    "name": "Balón original Selección Colombia",
+    "description": "El balón que despierta sueños, pasiones y recuerdos de Mundial.\nEmocional y aspiracional.",
+    "pointsPareto": 256,
+    "pointsNormal": 128,
+    "imageUrls": [
+      "https://i.postimg.cc/FRnFD78g/Balon-3.webp",
+      "https://i.postimg.cc/sX0fwvqJ/Balon-4.webp",
+      "https://i.postimg.cc/pT1Vqp4Z/Balon1.webp",
+      "https://i.postimg.cc/85nktj9Z/Balon2.webp"
+    ],
+    "category": "Deportes",
+    "popularity": 95,
+    "dateAdded": "2024-01-03"
+  },
+  {
+    "id": "rw_004",
+    "name": "Sanduchera",
+    "description": "Mientras rueda el balón, prepárate el sánduche del gol.\nTal cual tu idea, perfecta y muy memorable.",
+    "pointsPareto": 144,
+    "pointsNormal": 72,
+    "imageUrls": [
+      "https://i.postimg.cc/SQMjDGQJ/Sandwinch-1.webp",
+      "https://i.postimg.cc/j2P52RkK/Sandwinch-2.webp",
+      "https://i.postimg.cc/7P2bmNPb/Sandwinch-3.webp",
+      "https://i.postimg.cc/L41hNV45/Sandwinch-4.webp"
+    ],
+    "category": "Hogar",
+    "popularity": 50,
+    "dateAdded": "2024-01-04"
+  },
+  {
+    "id": "rw_005",
+    "name": "Mini parrilla eléctrica",
+    "description": "Cuando el partido se alarga, la parrilla también entra en la cancha.\nPerfecta para tiempos extra, reuniones y celebraciones.",
+    "pointsPareto": 89,
+    "pointsNormal": 44,
+    "imageUrls": [
+      "https://placehold.co/600x400/F37121/FFFFFF?text=Parrilla+Electrica"
+    ],
+    "category": "Hogar",
+    "popularity": 60,
+    "dateAdded": "2024-01-05"
+  },
+  {
+    "id": "rw_006",
+    "name": "Hielera",
+    "description": "Que nada se caliente… ni el partido ni la bebida.\nMuy fútbol, muy reunión.",
+    "pointsPareto": 63,
+    "pointsNormal": 32,
+    "imageUrls": [
+      "https://i.postimg.cc/x1HzsXRS/Hielera.webp"
+    ],
+    "category": "Accesorios",
+    "popularity": 65,
+    "dateAdded": "2024-01-06"
+  },
+  {
+    "id": "rw_007",
+    "name": "Parlante Bluetooth",
+    "description": "Que el grito de gol retumbe en cada rincón. Lleva la emoción del estadio a donde vayas.",
+    "pointsPareto": 78,
+    "pointsNormal": 39,
+    "imageUrls": [
+      "https://i.postimg.cc/MZPW3jvZ/Parlante.png"
+    ],
+    "category": "Tecnología",
+    "popularity": 80,
+    "dateAdded": "2024-01-07"
+  },
+  {
+    "id": "rw_008",
+    "name": "Barra de sonido",
+    "description": "Escucha el cántico de la hinchada y el silbato del árbitro como si estuvieras allí.",
+    "pointsPareto": 1507,
+    "pointsNormal": 753,
+    "imageUrls": [
+      "https://i.postimg.cc/tCDb516f/Barra-de-sonido-1.webp",
+      "https://i.postimg.cc/c4TWmK3z/Barra-de-sonido-2.webp",
+      "https://i.postimg.cc/ncTxksmd/Barra-de-sonido-3.webp",
+      "https://i.postimg.cc/J4K8qyX6/Barra-de-sonido-4.webp"
+    ],
+    "category": "Tecnología",
+    "popularity": 85,
+    "dateAdded": "2024-01-08"
+  },
+  {
+    "id": "rw_009",
+    "name": "Televisor 43\"",
+    "description": "Vive cada partido como si estuvieras en la tribuna.\nPerfecta, directa y poderosa.",
+    "pointsPareto": 1000,
+    "pointsNormal": 500,
+    "imageUrls": [
+      "https://i.postimg.cc/BQ7yb2Dh/Tv-43-1.jpg",
+      "https://i.postimg.cc/pXc7rK86/Tv-43-2.webp",
+      "https://i.postimg.cc/pXc7rK8S/Tv-43-3.webp",
+      "https://i.postimg.cc/jd392yNk/Tv-43-4.webp"
+    ],
+    "category": "Tecnología",
+    "popularity": 90,
+    "dateAdded": "2024-01-09"
+  },
+  {
+    "id": "rw_010",
+    "name": "Televisor 55” – Gran premio",
+    "description": "El Mundial no se mira… se vive en grande.\nFrase estrella, muy aspiracional.",
+    "pointsPareto": 1667,
+    "pointsNormal": 833,
+    "imageUrls": [
+      "https://i.postimg.cc/CxfvKXwH/tv-55-1.webp",
+      "https://i.postimg.cc/mgFdrJT3/tv-55-2.webp",
+      "https://i.postimg.cc/Z5yfq2Jr/tv-55-3.webp",
+      "https://i.postimg.cc/jSJ8jmRP/tv-55-4.webp"
+    ],
+    "category": "Tecnología",
+    "popularity": 100,
+    "dateAdded": "2024-01-10"
+  },
+  {
+    "id": "rw_011",
+    "name": "Camiseta Gulf MCO",
+    "description": "Camiseta negra de algodón premium con diseño icónico de Gulf. Combina la herencia del motociclismo con la comodidad que necesitas para apoyar a tu equipo en este Mundial",
+    "pointsPareto": 320,
+    "pointsNormal": 160,
+    "imageUrls": [
+      "https://i.postimg.cc/wB7Pv76d/Camiste_moto_Model.png"
+    ],
+    "category": "Ropa",
+    "popularity": 88,
+    "dateAdded": "2024-01-11"
+  },
+  {
+    "id": "rw_012",
+    "name": "Camiseta Gulf PCMO",
+    "description": "Vístete con los colores de la victoria. Ideal para alentar a tu equipo en cada partido del Mundial.",
+    "pointsPareto": 50,
+    "pointsNormal": 25,
+    "imageUrls": [
+      "https://i.postimg.cc/tgYfTY9K/Camiste_Carro_Model.png"
+    ],
+    "category": "Ropa",
+    "popularity": 77,
+    "dateAdded": "2026-03-12"
+  },
+  {
+    "id": "rw_013",
+    "name": "Licuadora 6 Velocidades",
+    "description": "Prepara los mejores batidos y cócteles para celebrar cada victoria de tu selección.",
+    "pointsPareto": 320,
+    "pointsNormal": 160,
+    "imageUrls": [
+      "https://i.postimg.cc/t4wbb0K4/Gemini_Generated_Image_7q90b27q90b27q90.png' }"
+    ],
+    "category": "Electrodomésticos",
+    "popularity": 60,
+    "dateAdded": "2026-03-12"
+  },
+  {
+    "id": "rw_014",
+    "name": "Picatodo Negro",
+    "description": "Pica los ingredientes para tus pasabocas tan rápido como un contragolpe letal.",
+    "pointsPareto": 147,
+    "pointsNormal": 73,
+    "imageUrls": [
+      "https://i.postimg.cc/qMS8yH1v/Gemini_Generated_Image_fn5hqtfn5hqtfn5h.png' }"
+    ],
+    "category": "Electrodomésticos",
+    "popularity": 63,
+    "dateAdded": "2026-03-12"
+  },
+  {
+    "id": "rw_015",
+    "name": "Freidora de aire 4 Litros",
+    "description": "Snacks crujientes y saludables para el medio tiempo, sin perderte ni un segundo del partido.",
+    "pointsPareto": 463,
+    "pointsNormal": 231,
+    "imageUrls": [
+      "https://i.postimg.cc/wMJBmtpj/FREIDORA_AIRE.png' }"
+    ],
+    "category": "Electrodomésticos",
+    "popularity": 62,
+    "dateAdded": "2026-03-12"
+  },
+  {
+    "id": "rw_016",
+    "name": "Cafetera Eléctrica 12 Tazas He7031a Negro",
+    "description": "Mantente despierto en todos los partidos, incluso en los de la madrugada. Energía para gritar gol.",
+    "pointsPareto": 349,
+    "pointsNormal": 175,
+    "imageUrls": [
+      "https://i.postimg.cc/HLMgsZmk/Gemini_Generated_Image_ps3dg1ps3dg1ps3d.png' }"
+    ],
+    "category": "Electrodomésticos",
+    "popularity": 87,
+    "dateAdded": "2026-03-12"
+  },
+  {
+    "id": "rw_017",
+    "name": "Olla Arrocera 1",
+    "description": "El acompañamiento perfecto para el asado del domingo de fútbol. Rinde para toda la hinchada.",
+    "pointsPareto": 213,
+    "pointsNormal": 107,
+    "imageUrls": [
+      "https://i.postimg.cc/BQkxHfm4/Gemini_Generated_Image_kx16k9kx16k9kx16_(1).png' }"
+    ],
+    "category": "Electrodomésticos",
+    "popularity": 54,
+    "dateAdded": "2026-03-12"
+  },
+  {
+    "id": "rw_018",
+    "name": "Olla Eléctrica Multifunción",
+    "description": "Prepara un banquete de campeones mientras disfrutas de la final del Mundial.",
+    "pointsPareto": 533,
+    "pointsNormal": 267,
+    "imageUrls": [
+      "https://i.postimg.cc/WzX9LHN7/Gemini_Generated_Image_vikqelvikqelvikq.png' }"
+    ],
+    "category": "Electrodomésticos",
+    "popularity": 81,
+    "dateAdded": "2026-03-12"
+  },
+  {
+    "id": "rw_019",
+    "name": "Sanduchera Panini",
+    "description": "Sándwiches calientes y listos para el pitazo inicial. El mejor refuerzo para tu hambre.",
+    "pointsPareto": 133,
+    "pointsNormal": 66,
+    "imageUrls": [
+      "https://i.postimg.cc/wjNDk4rM/Gemini_Generated_Image_dgqorzdgqorzdgqo.png' }"
+    ],
+    "category": "Electrodomésticos",
+    "popularity": 69,
+    "dateAdded": "2026-03-12"
+  },
+  {
+    "id": "rw_020",
+    "name": "Sanduchera Eléctrica 2 Puestos",
+    "description": "Doble porción para compartir con tu compañero de tribuna en casa.",
+    "pointsPareto": 107,
+    "pointsNormal": 53,
+    "imageUrls": [
+      "https://i.postimg.cc/GmDvjgfY/Gemini_Generated_Image_rdwum1rdwum1rdwu_(1).png' }"
+    ],
+    "category": "Electrodomésticos",
+    "popularity": 71,
+    "dateAdded": "2026-03-12"
+  },
+  {
+    "id": "rw_021",
+    "name": "Horno Electrico",
+    "description": "Calienta tus snacks y mantén la temperatura del partido al máximo nivel.",
+    "pointsPareto": 295,
+    "pointsNormal": 147,
+    "imageUrls": [
+      "https://i.postimg.cc/jj01vsVJ/Gemini_Generated_Image_l69j03l69j03l69j.png' }"
+    ],
+    "category": "Electrodomésticos",
+    "popularity": 80,
+    "dateAdded": "2026-03-12"
+  },
+  {
+    "id": "rw_022",
+    "name": "Horno Microondas de Mesa",
+    "description": "Comida lista en tiempo récord, para que no te pierdas ni una jugada de peligro.",
+    "pointsPareto": 492,
+    "pointsNormal": 246,
+    "imageUrls": [
+      "https://i.postimg.cc/PJJy4jqW/HORNO_MICROHONDAS_25LT.png' }"
+    ],
+    "category": "Electrodomésticos",
+    "popularity": 83,
+    "dateAdded": "2026-03-12"
+  },
+  {
+    "id": "rw_023",
+    "name": "Ventilador De Piso",
+    "description": "Mantén la frescura cuando el partido se ponga candente en los últimos minutos.",
+    "pointsPareto": 332,
+    "pointsNormal": 166,
+    "imageUrls": [
+      "https://i.postimg.cc/8CvSPKGJ/Gemini_Generated_Image_yzmjqayzmjqayzmj.png' }"
+    ],
+    "category": "Electrodomésticos",
+    "popularity": 51,
+    "dateAdded": "2026-03-12"
+  },
+  {
+    "id": "rw_024",
+    "name": "Ventilador 3 en 1",
+    "description": "Refresca el ambiente en la sala mientras tu equipo suda la camiseta en la cancha.",
+    "pointsPareto": 267,
+    "pointsNormal": 133,
+    "imageUrls": [
+      "https://i.postimg.cc/fbnP5w4b/Gemini_Generated_Image_plm36cplm36cplm3.png' }"
+    ],
+    "category": "Electrodomésticos",
+    "popularity": 65,
+    "dateAdded": "2026-03-12"
+  },
+  {
+    "id": "rw_025",
+    "name": "Plancha Para Ropa vertical",
+    "description": "Tu camiseta de la selección siempre impecable, lista para salir a celebrar.",
+    "pointsPareto": 244,
+    "pointsNormal": 122,
+    "imageUrls": [
+      "https://i.postimg.cc/MG2LtWkR/Gemini_Generated_Image_h03fi0h03fi0h03f.png' }"
+    ],
+    "category": "Electrodomésticos",
+    "popularity": 77,
+    "dateAdded": "2026-03-12"
+  },
+  {
+    "id": "rw_026",
+    "name": "Plancha De Vapor Ligera",
+    "description": "Elimina las arrugas de tu uniforme de hincha con la precisión de un tiro libre.",
+    "pointsPareto": 147,
+    "pointsNormal": 73,
+    "imageUrls": [
+      "https://i.postimg.cc/SN3WCbgQ/Gemini_Generated_Image_11h0pr11h0pr11h0.png' }"
+    ],
+    "category": "Electrodomésticos",
+    "popularity": 74,
+    "dateAdded": "2026-03-12"
+  },
+  {
+    "id": "rw_027",
+    "name": "Wafflera",
+    "description": "Desayunos de campeones para los partidos mañaneros del Mundial.",
+    "pointsPareto": 147,
+    "pointsNormal": 73,
+    "imageUrls": [
+      "https://i.postimg.cc/Qxwp1Zfx/Gemini_Generated_Image_9c59889c59889c59.png' }"
+    ],
+    "category": "Electrodomésticos",
+    "popularity": 81,
+    "dateAdded": "2026-03-12"
+  },
+  {
+    "id": "rw_028",
+    "name": "Nevera Convencional 211 Litros Brutos",
+    "description": "Mantén tus bebidas heladas para celebrar cada gol como se debe.",
+    "pointsPareto": 1733,
+    "pointsNormal": 867,
+    "imageUrls": [
+      "https://i.postimg.cc/fWKq9Jx1/Gemini_Generated_Image_8ptxku8ptxku8ptx.png' }"
+    ],
+    "category": "Electrodomésticos",
+    "popularity": 76,
+    "dateAdded": "2026-03-12"
+  },
+  {
+    "id": "rw_029",
+    "name": "Nevera No Frost 249 L",
+    "description": "Espacio de sobra para las provisiones de toda la fase de grupos.",
+    "pointsPareto": 2133,
+    "pointsNormal": 1067,
+    "imageUrls": [
+      "https://i.postimg.cc/kMcYbBxY/Gemini_Generated_Image_6jmybw6jmybw6jmy.png' }"
+    ],
+    "category": "Electrodomésticos",
+    "popularity": 51,
+    "dateAdded": "2026-03-12"
+  },
+  {
+    "id": "rw_030",
+    "name": "Nevera No Frost 389 L",
+    "description": "El estadio de tus bebidas. Capacidad gigante para la gran final.",
+    "pointsPareto": 2533,
+    "pointsNormal": 1267,
+    "imageUrls": [
+      "https://i.postimg.cc/sgskYBrH/NEVERA_NO_FROST_389_L.png' }"
+    ],
+    "category": "Electrodomésticos",
+    "popularity": 63,
+    "dateAdded": "2026-03-12"
+  },
+  {
+    "id": "rw_031",
+    "name": "Lavadora Carga Superior 15 kg",
+    "description": "Lava las camisetas de toda la hinchada después de una celebración épica.",
+    "pointsPareto": 3873,
+    "pointsNormal": 1937,
+    "imageUrls": [
+      "https://i.postimg.cc/4yN55Q64/Gemini_Generated_Image_oabxktoabxktoabx.png' }"
+    ],
+    "category": "Electrodomésticos",
+    "popularity": 66,
+    "dateAdded": "2026-03-12"
+  },
+  {
+    "id": "rw_032",
+    "name": "Lavadora Carga Superior 11 kg (24lb)",
+    "description": "Tu uniforme de la suerte siempre limpio y listo para el próximo encuentro.",
+    "pointsPareto": 2444,
+    "pointsNormal": 1222,
+    "imageUrls": [
+      "https://i.postimg.cc/SQr1MJWt/Gemini_Generated_Image_hpdidehpdidehpdi.png' }"
+    ],
+    "category": "Electrodomésticos",
+    "popularity": 85,
+    "dateAdded": "2026-03-12"
+  },
+  {
+    "id": "rw_033",
+    "name": "Sofá cama",
+    "description": "El mejor asiento del estadio está en tu sala. Comodidad total para ver el Mundial.",
+    "pointsPareto": 944,
+    "pointsNormal": 472,
+    "imageUrls": [
+      "https://i.postimg.cc/2SBCyqwN/Captura-de-pantalla-2026-03-06-144427.jpg' }"
+    ],
+    "category": "Hogar",
+    "popularity": 52,
+    "dateAdded": "2026-03-12"
+  },
+  {
+    "id": "rw_034",
+    "name": "Juego de comedor 6 puestos",
+    "description": "Reúne a tu equipo titular para disfrutar de una buena comida antes del partido.",
+    "pointsPareto": 1111,
+    "pointsNormal": 556,
+    "imageUrls": [
+      "https://i.postimg.cc/2j1SPKg0/comedor_6_puestos.png' }"
+    ],
+    "category": "Hogar",
+    "popularity": 86,
+    "dateAdded": "2026-03-12"
+  },
+  {
+    "id": "rw_035",
+    "name": "Juego de vajilla 4 puestos",
+    "description": "Sirve la pasión del fútbol en cada comida con tu familia.",
+    "pointsPareto": 133,
+    "pointsNormal": 67,
+    "imageUrls": [
+      "https://i.postimg.cc/ZKPBH1rs/Vajilla_4_puestos.png' }"
+    ],
+    "category": "Hogar",
+    "popularity": 87,
+    "dateAdded": "2026-03-12"
+  },
+  {
+    "id": "rw_036",
+    "name": "Batería de ollas",
+    "description": "Equipa tu cocina como un verdadero director técnico prepara su estrategia.",
+    "pointsPareto": 267,
+    "pointsNormal": 133,
+    "imageUrls": [
+      "https://i.postimg.cc/h4XtH5Nz/BATERIA_DE_OLLAS.png' }"
+    ],
+    "category": "Electrodomésticos",
+    "popularity": 63,
+    "dateAdded": "2026-03-12"
+  },
+  {
+    "id": "rw_037",
+    "name": "Reloj Garmin Vivoactive 5 Marfil",
+    "description": "Mide tus pulsaciones en la tanda de penales y controla tu rendimiento como un profesional.",
+    "pointsPareto": 2132,
+    "pointsNormal": 1066,
+    "imageUrls": [
+      "https://i.postimg.cc/CL4PRTHs/Garmin_vivoactive_5.png' }"
+    ],
+    "category": "Tecnología",
+    "popularity": 68,
+    "dateAdded": "2026-03-12"
+  },
+  {
+    "id": "rw_038",
+    "name": "Televisor Challenger 32” LED",
+    "description": "No te pierdas ningún detalle del partido desde la comodidad de tu cuarto.",
+    "pointsPareto": 949,
+    "pointsNormal": 475,
+    "imageUrls": [
+      "https://i.postimg.cc/zvv7jrf0/TELEVISOR_SAMSUNG_50_LED_UHD.png' }"
+    ],
+    "category": "Tecnología",
+    "popularity": 71,
+    "dateAdded": "2026-03-12"
+  },
+  {
+    "id": "rw_039",
+    "name": "Televisor 40” LED UHD 4K",
+    "description": "Resolución de campeonato para ver cada jugada polémica con claridad.",
+    "pointsPareto": 2000,
+    "pointsNormal": 1000,
+    "imageUrls": [
+      "https://i.postimg.cc/76mX06qt/FREIDOREA_6L_DIGITAL_OSTER.png' }"
+    ],
+    "category": "Tecnología",
+    "popularity": 77,
+    "dateAdded": "2026-03-12"
+  },
+  {
+    "id": "rw_040",
+    "name": "Televisor 43” LED UHD 4K",
+    "description": "Siente que estás en el estadio con colores vivos y definición de primera.",
+    "pointsPareto": 2667,
+    "pointsNormal": 1333,
+    "imageUrls": [
+      "https://i.postimg.cc/2SrsQqDM/TELEVISOR_SAMSUNG_65_LED_UHD_4K.png' }"
+    ],
+    "category": "Tecnología",
+    "popularity": 88,
+    "dateAdded": "2026-03-12"
+  },
+  {
+    "id": "rw_041",
+    "name": "Televisor 50” LED UHD 4K",
+    "description": "Una pantalla gigante para vivir la emoción del Mundial en tamaño real.",
+    "pointsPareto": 3467,
+    "pointsNormal": 1733,
+    "imageUrls": [
+      "https://i.postimg.cc/2SrsQqDM/TELEVISOR_SAMSUNG_65_LED_UHD_4K.png' }"
+    ],
+    "category": "Tecnología",
+    "popularity": 52,
+    "dateAdded": "2026-03-12"
+  },
+  {
+    "id": "rw_042",
+    "name": "Televisor 65” LED UHD 4K",
+    "description": "El estadio en tu sala. La experiencia definitiva para la final del mundo.",
+    "pointsPareto": 4444,
+    "pointsNormal": 2222,
+    "imageUrls": [
+      "https://i.postimg.cc/2SrsQqDM/TELEVISOR_SAMSUNG_65_LED_UHD_4K.png' }"
+    ],
+    "category": "Tecnología",
+    "popularity": 89,
+    "dateAdded": "2026-03-12"
+  },
+  {
+    "id": "rw_043",
+    "name": "Barra de sonido",
+    "description": "Barra de sonido",
+    "pointsPareto": 133,
+    "pointsNormal": 67,
+    "imageUrls": [
+      "https://i.postimg.cc/Wb7WdL6Z/Barra_de_sonido_500.png' }"
+    ],
+    "category": "Tecnología",
+    "popularity": 54,
+    "dateAdded": "2026-03-12"
+  },
+  {
+    "id": "rw_044",
+    "name": "Parlante Clip 5 JBL",
+    "description": "Lleva la fiesta del fútbol a cualquier parte. Pequeño pero con potencia de goleador.",
+    "pointsPareto": 378,
+    "pointsNormal": 189,
+    "imageUrls": [
+      "https://i.postimg.cc/fR0zwyZK/parlante_JBL.png' }"
+    ],
+    "category": "Tecnología",
+    "popularity": 60,
+    "dateAdded": "2026-03-12"
+  },
+  {
+    "id": "rw_045",
+    "name": "Parlante K-SPK300D Negro",
+    "description": "Potencia de estadio para que tus celebraciones se escuchen en todo el barrio.",
+    "pointsPareto": 1107,
+    "pointsNormal": 553,
+    "imageUrls": [
+      "https://i.postimg.cc/Dwbv20nk/Parlante_torre.png' }"
+    ],
+    "category": "Tecnología",
+    "popularity": 55,
+    "dateAdded": "2026-03-12"
+  },
+  {
+    "id": "rw_046",
+    "name": "Audífonos Deportivos Inalámbricos Bluetooth 5.3",
+    "description": "Concéntrate en el partido o en tu entrenamiento con la mejor tecnología.",
+    "pointsPareto": 133,
+    "pointsNormal": 67,
+    "imageUrls": [
+      "https://i.postimg.cc/ZRksrQKK/Captura-de-pantalla-2026-02-19-205312.png' }"
+    ],
+    "category": "Tecnología",
+    "popularity": 76,
+    "dateAdded": "2026-03-12"
+  },
+  {
+    "id": "rw_047",
+    "name": "Audífonos Diadema Bluetooth con SD y Radio",
+    "description": "Sintoniza los partidos en la radio y no te pierdas ni un minuto de la acción.",
+    "pointsPareto": 133,
+    "pointsNormal": 67,
+    "imageUrls": [
+      "https://i.postimg.cc/MTR4NSrD/Gemini_Generated_Image_b7pr7wb7pr7wb7pr.png' }"
+    ],
+    "category": "Tecnología",
+    "popularity": 54,
+    "dateAdded": "2026-03-12"
+  },
+  {
+    "id": "rw_048",
+    "name": "Audífonos de diadema JBL Bluetooth",
+    "description": "Aíslate del ruido y vive la narración del partido con calidad de estudio.",
+    "pointsPareto": 377,
+    "pointsNormal": 188,
+    "imageUrls": [
+      "https://i.postimg.cc/7ZpL77mb/audifonos_bluetooh.png' }"
+    ],
+    "category": "Tecnología",
+    "popularity": 74,
+    "dateAdded": "2026-03-12"
+  },
+  {
+    "id": "rw_049",
+    "name": "Mini Proyector WiFi y Bluetooth - Resolución nativa 1080P",
+    "description": "Proyecta el partido en la pared y convierte tu casa en una fan zone.",
+    "pointsPareto": 389,
+    "pointsNormal": 194,
+    "imageUrls": [
+      "https://i.postimg.cc/kMLg9ydj/VIDEO_PROYECTOR.png' }"
+    ],
+    "category": "Tecnología",
+    "popularity": 69,
+    "dateAdded": "2026-03-12"
+  },
+  {
+    "id": "rw_050",
+    "name": "Amazon Alexa",
+    "description": "Pídele a Alexa los resultados del Mundial y controla tu casa inteligente sin soltar la cerveza.",
+    "pointsPareto": 400,
+    "pointsNormal": 200,
+    "imageUrls": [
+      "https://i.postimg.cc/g082KJTX/Alexa_bluetooh.png' }"
+    ],
+    "category": "Tecnología",
+    "popularity": 57,
+    "dateAdded": "2026-03-12"
+  },
+  {
+    "id": "rw_051",
+    "name": "Aspiradora Robot",
+    "description": "Que ella limpie la sala mientras tú no despegas los ojos del televisor.",
+    "pointsPareto": 980,
+    "pointsNormal": 490,
+    "imageUrls": [
+      "https://i.postimg.cc/ZRVjpRJF/APIRADORA_ROBOTSMART_ESTACIÓN_TP_LINK_TAPO_RV_20_MAX_PLUS.png' }"
+    ],
+    "category": "Electrodomésticos",
+    "popularity": 82,
+    "dateAdded": "2026-03-12"
+  },
+  {
+    "id": "rw_052",
+    "name": "Patineta eléctrica Xiaomi Scooter 5 Max",
+    "description": "Llega a tiempo para el pitazo inicial, esquivando el tráfico como un crack.",
+    "pointsPareto": 3667,
+    "pointsNormal": 1833,
+    "imageUrls": [
+      "https://i.postimg.cc/5Ndg6WXq/Captura-de-pantalla-2026-02-23-080440.png' }"
+    ],
+    "category": "Deportes",
+    "popularity": 85,
+    "dateAdded": "2026-03-12"
+  },
+  {
+    "id": "rw_053",
+    "name": "Bicicleta Eléctrica 35kmh",
+    "description": "Muévete por la ciudad con la velocidad de un extremo por la banda.",
+    "pointsPareto": 3222,
+    "pointsNormal": 1611,
+    "imageUrls": [
+      "https://i.postimg.cc/CMRxWQ9n/BICICLETA_ELECTRICA_PINGUI.png' }"
+    ],
+    "category": "Deportes",
+    "popularity": 89,
+    "dateAdded": "2026-03-12"
+  },
+  {
+    "id": "rw_054",
+    "name": "Portátil HP 14”",
+    "description": "Sigue las estadísticas del Mundial y trabaja sin perder el ritmo.",
+    "pointsPareto": 2199,
+    "pointsNormal": 1099,
+    "imageUrls": [
+      "https://i.postimg.cc/ZKL7WtFp/computador_inter_14.png' }"
+    ],
+    "category": "Tecnología",
+    "popularity": 51,
+    "dateAdded": "2026-03-12"
+  },
+  {
+    "id": "rw_055",
+    "name": "Tablet SAMSUNG",
+    "description": "Lleva el partido a cualquier habitación de la casa. Tu segunda pantalla ideal.",
+    "pointsPareto": 2133,
+    "pointsNormal": 1067,
+    "imageUrls": [
+      "https://i.postimg.cc/J43Dx9b6/table_samsung.png' }"
+    ],
+    "category": "Tecnología",
+    "popularity": 53,
+    "dateAdded": "2026-03-12"
+  },
+  {
+    "id": "rw_056",
+    "name": "Tablet Lenovo",
+    "description": "Analiza las jugadas y revisa el VAR desde la palma de tu mano.",
+    "pointsPareto": 1333,
+    "pointsNormal": 667,
+    "imageUrls": [
+      "https://i.postimg.cc/jjDvDHbY/Captura-de-pantalla-2026-02-23-083618.png' }"
+    ],
+    "category": "Tecnología",
+    "popularity": 50,
+    "dateAdded": "2026-03-12"
+  },
+  {
+    "id": "rw_057",
+    "name": "Samsung Galaxy A16 · 256 GB · 8 GB RAM",
+    "description": "Captura los mejores momentos de tus celebraciones con calidad de primera.",
+    "pointsPareto": 1200,
+    "pointsNormal": 600,
+    "imageUrls": [
+      "https://i.postimg.cc/90jQRHrP/a16.png }"
+    ],
+    "category": "Tecnología",
+    "popularity": 50,
+    "dateAdded": "2026-03-12"
+  },
+  {
+    "id": "rw_058",
+    "name": "Samsung Galaxy A36 · 256 GB · 8 GB RAM",
+    "description": "Rendimiento de alto nivel para seguir el Mundial en tus redes sociales.",
+    "pointsPareto": 1667,
+    "pointsNormal": 833,
+    "imageUrls": [
+      "https://i.postimg.cc/ydRN88Yn/a36.png"
+    ],
+    "category": "Tecnología",
+    "popularity": 58,
+    "dateAdded": "2026-03-12"
+  },
+  {
+    "id": "rw_059",
+    "name": "iPhone 13 · 128 GB",
+    "description": "Graba tus reacciones a los goles con la mejor cámara del mercado.",
+    "pointsPareto": 4000,
+    "pointsNormal": 2000,
+    "imageUrls": [
+      "https://i.postimg.cc/rz6dGZQ5/iphone_13.png"
+    ],
+    "category": "Tecnología",
+    "popularity": 51,
+    "dateAdded": "2026-03-12"
+  },
+  {
+    "id": "rw_060",
+    "name": "iPhone 15 · 128 GB",
+    "description": "Tecnología de punta para el hincha más exigente. Sigue el Mundial con estilo.",
+    "pointsPareto": 5067,
+    "pointsNormal": 2533,
+    "imageUrls": [
+      "https://i.postimg.cc/CdyZCrmD/iphone_15.png"
+    ],
+    "category": "Tecnología",
+    "popularity": 70,
+    "dateAdded": "2026-03-12"
+  },
+  {
+    "id": "rw_061",
+    "name": "Celular SAMSUNG Galaxy A17 256 GB 8 GB RAM Azul",
+    "description": "Un equipo titular en tu bolsillo. Batería para todo el día de partidos.",
+    "pointsPareto": 1333,
+    "pointsNormal": 667,
+    "imageUrls": [
+      "https://i.postimg.cc/Y9FSCCqX/a17.png"
+    ],
+    "category": "Tecnología",
+    "popularity": 81,
+    "dateAdded": "2026-03-12"
+  },
+  {
+    "id": "rw_062",
+    "name": "Celular MOTOROLA G55",
+    "description": "Conectividad rápida para que no te pierdas ninguna notificación de gol.",
+    "pointsPareto": 1333,
+    "pointsNormal": 667,
+    "imageUrls": [
+      "https://i.postimg.cc/qqdvhHz8/g55.png"
+    ],
+    "category": "Tecnología",
+    "popularity": 64,
+    "dateAdded": "2026-03-12"
+  },
+  {
+    "id": "rw_063",
+    "name": "Celular MOTOROLA G56 5G 256 GB 8 GB RAM Azul Marino",
+    "description": "Velocidad 5G para ver los partidos en streaming sin interrupciones.",
+    "pointsPareto": 1444,
+    "pointsNormal": 722,
+    "imageUrls": [
+      "https://i.postimg.cc/K4XK7pJB/g56.png"
+    ],
+    "category": "Tecnología",
+    "popularity": 74,
+    "dateAdded": "2026-03-12"
+  },
+  {
+    "id": "rw_064",
+    "name": "Ahumador y Asador de Barril Mediano 20 Lbs",
+    "description": "El MVP del tercer tiempo. Prepara los mejores asados para celebrar con tu hinchada.",
+    "pointsPareto": 667,
+    "pointsNormal": 333,
+    "imageUrls": [
+      "https://i.postimg.cc/vZTNpPzv/Captura-de-pantalla-2026-02-23-120541.png"
+    ],
+    "category": "Hogar",
+    "popularity": 56,
+    "dateAdded": "2026-03-12"
+  }
+],
+  orders: []
 };
 
 // Helper to load/save from localStorage
@@ -733,7 +1494,12 @@ export const getDatabase = (): Database => {
     localStorage.setItem(DB_KEY, JSON.stringify(INITIAL_DATA));
     return INITIAL_DATA;
   }
-  return JSON.parse(stored);
+  const db = JSON.parse(stored);
+  // Ensure orders array exists if migrating from old DB version
+  if (!db.orders) {
+      db.orders = [];
+  }
+  return db;
 };
 
 export const saveDatabase = (data: Database) => {
@@ -766,6 +1532,14 @@ export const deductPoints = (pointOfSale: string, amount: number): boolean => {
   return false;
 };
 
+export const addOrder = (order: OrderLog) => {
+    const db = getDatabase();
+    if (!db.orders) db.orders = [];
+    db.orders.push(order);
+    saveDatabase(db);
+};
+
 export const getClients = () => getDatabase().clients;
 export const getPoints = (pointOfSale: string) => getDatabase().points.find(p => p.pointOfSale === pointOfSale)?.points || 0;
 export const getRewards = () => getDatabase().rewards;
+export const getOrders = () => getDatabase().orders;

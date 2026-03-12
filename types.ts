@@ -19,7 +19,10 @@ export interface Reward {
   description: string;
   pointsPareto: number;
   pointsNormal: number;
-  imageUrl: string;
+  imageUrls: string[];
+  category?: string;
+  popularity?: number;
+  dateAdded?: string;
 }
 
 export interface CartItem extends Reward {
@@ -34,9 +37,21 @@ export interface OrderDetails {
   phone: string;
 }
 
+export interface OrderLog {
+  date: string;       // Columna A
+  time: string;       // Columna B
+  client: string;     // Columna C
+  receiver: string;   // Columna D
+  city: string;       // Columna E
+  address: string;    // Columna F
+  phone: string;      // Columna G
+  items: string;      // Extra: What they bought
+}
+
 // Simulates the structure of the CSV files requested
 export interface Database {
   clients: Client[];
   points: ClientPoints[];
   rewards: Reward[];
+  orders: OrderLog[];
 }
