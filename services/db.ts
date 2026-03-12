@@ -1,6 +1,6 @@
 import { Client, ClientPoints, Reward, Database, ClientType, OrderLog } from '../types';
 
-const DB_KEY = 'gulf_prolub_db_v9'; // Incremented to v7 to add new rewards
+const DB_KEY = 'gulf_prolub_db_v10'; // Incremented to v7 to add new rewards
 const DEFAULT_POINTS = 0; 
 
 const RAW_CLIENTS_CSV = `Tipo de cliente;Id;Punto de venta;Contraseña
@@ -651,10 +651,10 @@ const INITIAL_DATA: Database = {
   },
   {
     "id": "rw_002",
-    "name": "Gorra / Vaso cervecero",
+    "name": "Gorra GULF - Prolub",
     "description": "Porque el hincha se reconoce desde el primer sorbo y hasta el último minuto.\nPara vivir el partido como se debe",
-    "pointsPareto": 463,
-    "pointsNormal": 231,
+    "pointsPareto": 17,
+    "pointsNormal": 8,
     "imageUrls": [
       "https://i.postimg.cc/DzwhcvnQ/Gorra_Cerrada_gulf_prolub.png"
     ],
@@ -785,8 +785,8 @@ const INITIAL_DATA: Database = {
     "id": "rw_011",
     "name": "Camiseta Gulf MCO",
     "description": "Camiseta negra de algodón premium con diseño icónico de Gulf. Combina la herencia del motociclismo con la comodidad que necesitas para apoyar a tu equipo en este Mundial",
-    "pointsPareto": 320,
-    "pointsNormal": 160,
+    "pointsPareto": 50,
+    "pointsNormal": 25,
     "imageUrls": [
       "https://i.postimg.cc/wB7Pv76d/Camiste_moto_Model.png"
     ],
