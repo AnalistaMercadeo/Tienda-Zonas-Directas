@@ -1,6 +1,6 @@
 import { Client, ClientPoints, Reward, Database, ClientType, OrderLog } from '../types';
 
-const DB_KEY = 'gulf_prolub_db_v13'; // Incremented to v7 to add new rewards
+const DB_KEY = 'gulf_prolub_db_v14'; // Incremented to v7 to add new rewards
 const DEFAULT_POINTS = 0; 
 
 const RAW_CLIENTS_CSV = `Tipo de cliente;Id;Punto de venta;Contraseña
@@ -530,8 +530,8 @@ LOPEZ FORERO CRISTIAN CAMILO;0
 LUBRICANTES LA ESTRELLA FACA S.A.S.;303
 COOPERATIVA VALLECAUCANA DE TRANSPORTADORES;892
 LUBRICANTES CZ S.A.S.;116,1003
-FILTROS Y FILTROS S.A.S.;0
-GRISALES MESA EDWARD HERNAN;0
+FILTROS Y FILTROS S.A.S.;267
+GRISALES MESA EDWARD HERNAN;521
 ROMERO BONILLA MARIN;550
 DISTRIBUIDORA HERCA ASOCIADOS SAS;0
 COOPERATIVA INTEGRAL DE TRANSPORTADORES TAXIS EL TRIUNFO;195
