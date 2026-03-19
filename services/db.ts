@@ -1,6 +1,6 @@
 import { Client, ClientPoints, Reward, Database, ClientType, OrderLog } from '../types';
 
-const DB_KEY = 'gulf_prolub_db_v14'; // Incremented to v7 to add new rewards
+const DB_KEY = 'gulf_prolub_db_v15'; // Incremented to v7 to add new rewards
 const DEFAULT_POINTS = 0; 
 
 const RAW_CLIENTS_CSV = `Tipo de cliente;Id;Punto de venta;Contraseña
